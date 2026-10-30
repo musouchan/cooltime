@@ -99,7 +99,9 @@ Claude Code で1回メッセージを送ると、情報が書き出されます�
 
 ## 実機で確認が必要なこと
 
-1. **Codex の `account/rateLimits/read`** の応答の項目名（`CodexSource.parse` は想定で書いています）。
+1. **Codex の `account/rateLimits/read`**: 項目名は `codex app-server generate-json-schema`（codex-cli 0.166.0）の
+   スキーマに合わせて済み（`rateLimits.primary/secondary` の `usedPercent`・`resetsAt`（Unix秒）・`windowDurationMins`）。
+   **ログイン済みの実機の応答はまだ未確認**です。`codex app-server` を起動して実際の応答も一度見てください。
 2. **既定の支払いページのURL**（`Catalog.swift`）。各社のページで確認してください。
 3. **OpenRouter** は残額の上限を設定したキーでないと残額が返りません。
 4. **MenuBarExtra のラベル**に枠線（カプセル）が付くか。付かない場合は NSStatusItem に切り替えます。

@@ -2,8 +2,9 @@ import Foundation
 
 /// `codex app-server` に問い合わせて、5時間枠・週の枠と戻る時刻を得る。
 ///
-/// 注意: 応答の項目名は公式ドキュメントの要約から組み立てている。実機で必ず確認すること。
-/// そのため解析はゆるく書いてあり、想定と違うときは数字を作らずエラーにする。
+/// 応答の項目名は `codex app-server generate-json-schema`（codex-cli 0.166.0）の
+/// `GetAccountRateLimitsResponse` に合わせてある。ログイン済みの実機の応答は未確認。
+/// 想定と違うときは数字を作らずエラーにする。
 public struct CodexSource: Sendable {
     public init() {}
 
@@ -80,18 +81,16 @@ public struct CodexSource: Sendable {
     // MARK: - 解析（テストできる）
 
     public static func parse(_ result: [String: Any], now: Date = Date()) throws -> SourceResult {
-        let limits = (result["rateLimits"] as? [String: Any]) ?? (result["rate_limits"] as? [String: Any]) ?? result
+        guard let limits = result["rateLimits"] as? [String: Any] else {
+            throw SourceError.unexpectedResponse("rateLimits がありません")
+        }
         var windows: [WindowStatus] = []
         for (key, fallback) in [("primary", "5時間枠"), ("secondary", "週の枠")] {
             guard let w = limits[key] as? [String: Any] else { continue }
-            guard let used = pick(w, ["usedPercent", "used_percent"]) else { continue }
-            var resetsAt: Date?
-            if let epoch = pick(w, ["resetsAt", "resets_at"]) {
-                resetsAt = Date(timeIntervalSince1970: epoch)
-            } else if let inSec = pick(w, ["resetsInSeconds", "resets_in_seconds"]) {
-                resetsAt = now.addingTimeInterval(inSec)
-            }
-            guard let reset = resetsAt else { continue } // 戻る時刻が無い枠は載せない
+            guard let used = pick(w, ["usedPercent"]) else { continue }
+            // resetsAt は Unix 秒（null あり）。戻る時刻が無い枠は載せない
+            guard let epoch = pick(w, ["resetsAt"]) else { continue }
+            let reset = Date(timeIntervalSince1970: epoch)
             windows.append(WindowStatus(name: name(for: w, fallback: fallback),
                                         usedPercent: used, resetsAt: reset))
         }
@@ -105,7 +104,7 @@ public struct CodexSource: Sendable {
     }
 
     private static func name(for w: [String: Any], fallback: String) -> String {
-        guard let mins = pick(w, ["windowDurationMins", "window_minutes"]) else { return fallback }
+        guard let mins = pick(w, ["windowDurationMins"]) else { return fallback }
         if mins == 300 { return "5時間枠" }
         if mins == 10080 { return "週の枠" }
         return fallback

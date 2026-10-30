@@ -104,14 +104,14 @@ final class RecoveryCoreTests: XCTestCase {
 
     // MARK: Codex
 
-    func testCodexParseResetsInSeconds() throws {
+    func testCodexParse() throws {
         let result: [String: Any] = ["rateLimits": [
-            "primary": ["usedPercent": 100, "windowDurationMins": 300, "resetsInSeconds": 1800],
+            "primary": ["usedPercent": 100, "windowDurationMins": 300, "resetsAt": 1_800_001_800],
             "secondary": ["usedPercent": 10, "windowDurationMins": 10080, "resetsAt": 1_800_500_000]
         ]]
         let r = try CodexSource.parse(result, now: base)
         XCTAssertEqual(r.windows[0].name, "5時間枠")
-        XCTAssertEqual(r.windows[0].resetsAt, base.addingTimeInterval(1800))
+        XCTAssertEqual(r.windows[0].resetsAt, Date(timeIntervalSince1970: 1_800_001_800))
         XCTAssertEqual(r.windows[1].name, "週の枠")
     }
 
