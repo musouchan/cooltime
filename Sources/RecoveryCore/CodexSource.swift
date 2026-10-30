@@ -66,7 +66,7 @@ public struct CodexSource: Sendable {
         }
 
         try send(["jsonrpc": "2.0", "id": 1, "method": "initialize",
-                  "params": ["clientInfo": ["name": "usage-recovery", "version": "0.1"]]])
+                  "params": ["clientInfo": ["name": "cooltime", "version": "0.1"]]])
         _ = try readResponse(id: 1)
         try send(["jsonrpc": "2.0", "method": "initialized"])
         try send(["jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read"])

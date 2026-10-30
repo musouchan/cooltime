@@ -1,4 +1,4 @@
-# UsageRecovery
+# Cooltime
 
 AI・API・MCP の利用制限が「あと何分・何時間で戻るか」を、メニューバーに出す個人用の macOS アプリです。
 稼働状況の監視アプリではありません。**戻る時刻を正確に取れたものだけ**を載せます。
@@ -12,7 +12,7 @@ AI・API・MCP の利用制限が「あと何分・何時間で戻るか」を�
 
 ```bash
 swift test          # 中身（状態の判定・時間の表示・各社の解析）のテスト
-swift run UsageRecovery
+swift run Cooltime
 ```
 
 Dock にアイコンは出ません（メニューバーだけ）。直接配布を想定しています。
@@ -59,7 +59,7 @@ chmod +x scripts/statusline-tee.sh
 ```
 
 保存されるのは `rate_limits`（枠の使用%と戻る時刻）だけです。会話の内容やパスは保存しません。
-保存先: `~/Library/Application Support/UsageRecovery/claude-statusline.json`
+保存先: `~/Library/Application Support/Cooltime/claude-statusline.json`
 
 Claude Code で1回メッセージを送ると、情報が書き出されます。
 

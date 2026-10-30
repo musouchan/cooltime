@@ -4,10 +4,10 @@
 #
 #   例) "statusLine": { "type": "command", "command": "/path/to/statusline-tee.sh ~/.claude/my-statusline.sh" }
 #
-# 保存先: ~/Library/Application Support/UsageRecovery/claude-statusline.json
+# 保存先: ~/Library/Application Support/Cooltime/claude-statusline.json
 # 保存するのは rate_limits だけ。会話の内容やパスなどは保存しない。
 
-dir="$HOME/Library/Application Support/UsageRecovery"
+dir="$HOME/Library/Application Support/Cooltime"
 mkdir -p "$dir"
 input="$(cat)"
 

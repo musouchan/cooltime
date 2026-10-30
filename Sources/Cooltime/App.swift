@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct UsageRecoveryApp: App {
+struct CooltimeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var store = Store()
 

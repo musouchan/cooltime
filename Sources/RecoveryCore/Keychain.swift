@@ -4,7 +4,7 @@ import Security
 
 /// APIキーの保存先。ファイル・ログ・画面には出さない。
 public enum Keychain {
-    private static let service = "jp.rethic.usagerecovery"
+    private static let service = "jp.rethic.cooltime"
 
     public static func save(_ secret: String, account: String) throws {
         let base: [String: Any] = [

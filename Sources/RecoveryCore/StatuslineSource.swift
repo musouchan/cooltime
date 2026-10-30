@@ -7,7 +7,7 @@ public struct StatuslineSource: Sendable {
 
     public static var defaultURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("UsageRecovery/claude-statusline.json")
+            .appendingPathComponent("Cooltime/claude-statusline.json")
     }
 
     public init(fileURL: URL = StatuslineSource.defaultURL) { self.fileURL = fileURL }
