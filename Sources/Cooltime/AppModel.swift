@@ -15,6 +15,8 @@ struct Item: Identifiable {
 private struct Stored: Codable {
     var accounts: [Account]
     var snapshots: [String: Snapshot]
+    /// 自分で削除したサービス。自動検出で勝手に戻さない。
+    var dismissed: [String]?
 }
 
 @MainActor
@@ -24,6 +26,9 @@ final class AppModel: ObservableObject {
     @Published var errors: [UUID: String] = [:]
     @Published var refreshing: Set<UUID> = []
     @Published private(set) var now: Date
+    /// 管理画面で選ばれているアカウント。
+    @Published var selected: UUID?
+    private var dismissed: Set<String> = []
 
     let clock: Clock
 
@@ -31,6 +36,7 @@ final class AppModel: ObservableObject {
         self.clock = clock
         self.now = clock.now
         load()
+        autoDetect()
         reloadFiles()
         Task { [weak self] in
             // 分単位で静かに更新する。手元のファイルは自動で読み直す（通信なし）。
@@ -99,7 +105,9 @@ final class AppModel: ObservableObject {
         refreshing.insert(account.id)
         defer { refreshing.remove(account.id) }
         do {
-            snapshots[account.id] = try await Fetchers.fetch(account: account, service: service)
+            let result = try await Fetchers.fetch(account: account, service: service)
+            snapshots[account.id] = result.snapshot
+            apply(result.identity, to: account.id)
             errors[account.id] = nil
             save()
         } catch {
@@ -112,14 +120,43 @@ final class AppModel: ObservableObject {
         for a in accounts { await refresh(a) }
     }
 
+    // MARK: 自動検出
+
+    /// ログイン済みのツールを、この Mac のファイルの有無だけで見つけて追加する（通信なし・中身は読まない）。
+    /// 自分で削除したものは、戻さない。
+    func autoDetect() {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        var found: [String] = []
+        if fm.fileExists(atPath: home.appendingPathComponent(".claude.json").path)
+            || fm.fileExists(atPath: home.appendingPathComponent(".claude").path) { found.append("claude") }
+        if fm.fileExists(atPath: home.appendingPathComponent(".codex/auth.json").path) { found.append("codex") }
+
+        for id in found where !dismissed.contains(id) && !accounts.contains(where: { $0.serviceID == id }) {
+            let a = add(serviceID: id)
+            // 初回だけ、Codex はアカウント情報と利用枠を1回取得する（通信）。
+            if id == "codex" { Task { await refresh(a) } }
+        }
+    }
+
+    private func apply(_ identity: AccountIdentity?, to id: UUID) {
+        guard let identity, let i = accounts.firstIndex(where: { $0.id == id }),
+              accounts[i].name.isEmpty, let name = identity.displayName else { return }
+        accounts[i].name = name
+        if let t = identity.type { accounts[i].type = t }
+        save()
+    }
+
     // MARK: 追加・削除・保存
 
     @discardableResult
     func add(serviceID: String) -> Account {
         let a = Account(serviceID: serviceID)
         accounts.append(a)
+        dismissed.remove(serviceID)
+        if serviceID == "claude" { apply(Fetchers.claudeIdentity(), to: a.id) }
         save()
-        return a
+        return accounts.first { $0.id == a.id } ?? a
     }
 
     func update(_ a: Account) {
@@ -131,6 +168,7 @@ final class AppModel: ObservableObject {
     func remove(_ a: Account) {
         Keychain.delete(a.id)
         accounts.removeAll { $0.id == a.id }
+        dismissed.insert(a.serviceID)
         snapshots[a.id] = nil
         errors[a.id] = nil
         save()
@@ -146,11 +184,13 @@ final class AppModel: ObservableObject {
         guard let data = try? Data(contentsOf: Paths.state),
               let stored = try? JSONDecoder.cooltime.decode(Stored.self, from: data) else { return }
         accounts = stored.accounts
+        dismissed = Set(stored.dismissed ?? [])
         snapshots = Dictionary(uniqueKeysWithValues: stored.snapshots.compactMap { k, v in UUID(uuidString: k).map { ($0, v) } })
     }
 
     private func save() {
-        let stored = Stored(accounts: accounts, snapshots: Dictionary(uniqueKeysWithValues: snapshots.map { ($0.key.uuidString, $0.value) }))
+        let stored = Stored(accounts: accounts, snapshots: Dictionary(uniqueKeysWithValues: snapshots.map { ($0.key.uuidString, $0.value) }),
+                        dismissed: Array(dismissed))
         if let data = try? JSONEncoder.cooltime.encode(stored) { try? data.write(to: Paths.state, options: .atomic) }
     }
 }

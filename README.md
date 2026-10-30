@@ -5,7 +5,8 @@ AI・API・MCP の**利用制限が「あと何分・何時間で戻るか」**�
 
 - メニューバーには、一番早く戻るもの 1 件だけを「あと43分」の形で出します（カプセルで他のアイコンと区別）。
 - クリックすると、**制限中 / 使用可能 / クレジット** の一覧が開きます。
-- 「管理…」から、使っているサービスだけを自分で追加します。追加するまで何も取得・通信しません。
+- **起動すると、この Mac でログイン済みの Claude Code と Codex を自動で見つけて追加します**（メールアドレス・プランも自動で入ります）。
+  自分で削除したものは、戻しません。APIキー系のサービスだけは、「管理…」から自分で追加します。
 - macOS 14 以降。Dock にアイコンは出ません。
 
 ## インストール
@@ -33,27 +34,15 @@ AI・API・MCP の**利用制限が「あと何分・何時間で戻るか」**�
 Anthropic / OpenAI API のレート制限など）は載せていません。推定の数字も出しません。
 v0・Cursor は検証待ちのため、今回は入れていません。
 
-## Claude / Claude Code を使う設定（自分で行います）
+## Claude Code との連携（ボタン1つ）
 
-Cooltime は他のツールの設定を書き換えません。次を自分で設定してください。
+Claude の残り時間は、Claude Code のステータスラインから取ります。そのために `~/.claude/settings.json` へ記録の設定を足します。
 
-1. `scripts/cooltime-statusline.sh`（アプリ内の `Cooltime.app/Contents/Resources/` にも入っています）を好きな場所に置き、実行権限を付けます。
-2. `~/.claude/settings.json` に追加します。
+1. 「管理…」→ Claude を選び →「設定する…」を押します。
+2. **変更前と変更後の内容が表示される**ので、確認して「設定する」を押します。
+3. 元のファイルは `settings.json.cooltime-backup-…` として残ります。すでにステータスラインがある場合は、壊さずに、そのまま表示も続きます。「元に戻す」でいつでも外せます。
 
-```json
-{
-  "statusLine": { "type": "command", "command": "/path/to/cooltime-statusline.sh" }
-}
-```
-
-すでにステータスラインがある場合は、そのコマンドを引数にすると、保存したうえで表示も続きます。
-
-```json
-{
-  "statusLine": { "type": "command", "command": "/path/to/cooltime-statusline.sh 'いまのコマンド'" }
-}
-```
-
+設定のあと、Claude Code を使うと、利用枠が Cooltime に出ます。
 Claude のアカウントが複数あるときは、アカウントごとに環境変数 `COOLTIME_SLOT`（例: `work`）を変え、
 管理画面の「取得元の識別名」に同じ名前を入れます。
 
@@ -61,6 +50,9 @@ Claude のアカウントが複数あるときは、アカウントごとに環�
 
 - 戻り時刻は**公式の値だけ**を使います。目安を過ぎても「戻った」とは決めず、「リセット目安です。必要なら再確認してください」と出します。
 - APIキーは **Keychain にだけ**保存します（ファイル・ログ・画面には出しません）。
+- 自動検出は、ファイルがあるかを見るだけです（通信なし）。読むのは、メールアドレス・プラン名だけで、トークンやパスワードは読みません。
+  通信するのは、Codex の初回の1回と、更新ボタンのときだけです。
+- 他のツールの設定（Claude Code の settings.json）は、内容を見せて同意を得たときだけ、バックアップを取って書き換えます。
 - 通信先は各サービスの公式の窓口だけです。分析用の送信はしません。データは Mac の中（`~/Library/Application Support/Cooltime/`）にだけ保存します。
 - アプリの中でログインや支払いはしません。支払いは、支払いページを既定のブラウザで開くだけです。
 - 画面の読み取り・Cookie・スクレイピングなど、規約に反しかねない方法は使っていません。
@@ -70,15 +62,15 @@ Claude のアカウントが複数あるときは、アカウントごとに環�
 
 作成環境が Mac ではなかったため、次は未確認です。動かして、ずれていたら教えてください。
 
-- Claude Code のステータスラインの JSON 項目名（`rate_limits.five_hour.used_percentage` / `resets_at`）。
-- Codex の `account/rateLimits/read` の応答の項目名と、起動方法（ログインシェル経由で `codex app-server`）。
+- Claude Code のステータスラインの JSON 項目名と、`~/.claude.json` の `oauthAccount.emailAddress`（`rate_limits.five_hour.used_percentage` / `resets_at`）。
+- Codex の `account/rateLimits/read`・`account/read` の応答の項目名と、起動方法（ログインシェル経由で `codex app-server`）。
 - 各 API の応答の項目名（テストは公式ドキュメントの形を元にしています）。
 - メニューバーのカプセル表示の見え方（ライト／ダーク）。
 
 ## 開発
 
 ```bash
-swift test                 # 時計を差し替えるテスト（時刻の計算・状態の判定・応答の読み取り）
+swift test                 # 時計を差し替えるテスト（時刻の計算・状態の判定・応答の読み取り・設定ファイルの書き換え）
 scripts/build-app.sh       # build/Cooltime.app と build/Cooltime.zip を作る
 ```
 
