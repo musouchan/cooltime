@@ -216,3 +216,94 @@ final class StatuslineConfigTests: XCTestCase {
         XCTAssertNil(try StatuslineConfig.revert(existing: d("{\"statusLine\":{\"type\":\"command\",\"command\":\"mine\"}}"), scriptPath: script))
     }
 }
+
+final class ClaudeUsageTextTests: XCTestCase {
+    let tokyo = TimeZone(identifier: "Asia/Tokyo")!
+
+    func date(_ s: String) -> Date {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = tokyo
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f.date(from: s)!
+    }
+
+    func testParsesRealOutput() throws {
+        let text = """
+        You are currently using your subscription to power your Claude Code usage
+
+        Current session: 20% used · resets Nov 1 at 5:19pm (Asia/Tokyo)
+        Current week (all models): 3% used · resets Nov 7 at 4:59pm (Asia/Tokyo)
+        """
+        let s = try ClaudeUsageText.parse(text, now: date("2026-11-01 13:00"))
+        XCTAssertEqual(s.windows.map(\.label), ["5時間枠", "週の枠"])
+        XCTAssertEqual(s.windows[0].usedPercent, 20)
+        XCTAssertEqual(s.windows[0].resetsAt, date("2026-11-01 17:19"))
+        XCTAssertEqual(s.windows[1].resetsAt, date("2026-11-07 16:59"))
+    }
+
+    func testExhaustedSessionIsLimited() throws {
+        let now = date("2026-11-01 13:00")
+        let s = try ClaudeUsageText.parse("Current session: 100% used · resets Nov 1 at 5pm (Asia/Tokyo)", now: now)
+        XCTAssertEqual(evaluate(s, now: now), .limited(until: date("2026-11-01 17:00")))
+    }
+
+    func testYearRolloverAndNoonMidnight() {
+        XCTAssertEqual(ClaudeUsageText.resetDate("Jan 2 at 12am", timeZone: "Asia/Tokyo", now: date("2026-12-30 10:00")),
+                       date("2027-01-02 00:00"))
+        XCTAssertEqual(ClaudeUsageText.resetDate("Nov 3 at 12pm", timeZone: "Asia/Tokyo", now: date("2026-11-01 10:00")),
+                       date("2026-11-03 12:00"))
+    }
+
+    func testTimeOnlyMeansNextOccurrence() {
+        XCTAssertEqual(ClaudeUsageText.resetDate("9:30am", timeZone: "Asia/Tokyo", now: date("2026-11-01 13:00")),
+                       date("2026-11-02 09:30"))
+        XCTAssertEqual(ClaudeUsageText.resetDate("5:19pm", timeZone: "Asia/Tokyo", now: date("2026-11-01 13:00")),
+                       date("2026-11-01 17:19"))
+    }
+
+    func testUnknownOutputIsAnError() {
+        XCTAssertThrowsError(try ClaudeUsageText.parse("Unknown command: /usage", now: Date()))
+    }
+}
+
+final class StopHookConfigTests: XCTestCase {
+    let script = "/Users/me/Library/Application Support/Cooltime/cooltime-statusline.sh"
+    let hook = #"[ -n "$COOLTIME_USAGE_PROBE" ] || touch "$HOME/Library/Application Support/Cooltime/claude-ping""#
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+    func obj(_ data: Data) -> [String: Any] { try! JSONSerialization.jsonObject(with: data) as! [String: Any] }
+
+    func testAddsHookAlongsideExistingHooks() throws {
+        let existing = d(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#)
+        let c = try StatuslineConfig.plan(existing: existing, scriptPath: script, hookCommand: hook)
+        XCTAssertTrue(c.addsHook)
+        let stop = (obj(c.newData)["hooks"] as! [String: Any])["Stop"] as! [[String: Any]]
+        XCTAssertEqual(stop.count, 2)
+        XCTAssertTrue(StatuslineConfig.isSet(c.newData, scriptPath: script, hookCommand: hook))
+    }
+
+    func testAddsOnlyHookWhenStatuslineAlreadySet() throws {
+        let first = try StatuslineConfig.plan(existing: nil, scriptPath: script)
+        XCTAssertFalse(StatuslineConfig.isSet(first.newData, scriptPath: script, hookCommand: hook))
+        let second = try StatuslineConfig.plan(existing: first.newData, scriptPath: script, hookCommand: hook)
+        XCTAssertTrue(second.addsHook)
+        XCTAssertFalse(second.alreadySet)
+        let third = try StatuslineConfig.plan(existing: second.newData, scriptPath: script, hookCommand: hook)
+        XCTAssertTrue(third.alreadySet)
+    }
+
+    func testRevertRemovesOnlyOurs() throws {
+        let existing = d(#"{"a":1,"hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#)
+        let c = try StatuslineConfig.plan(existing: existing, scriptPath: script, hookCommand: hook)
+        let back = try StatuslineConfig.revert(existing: c.newData, scriptPath: script, hookCommand: hook)!
+        let root = obj(back)
+        XCTAssertNil(root["statusLine"])
+        let stop = (root["hooks"] as! [String: Any])["Stop"] as! [[String: Any]]
+        XCTAssertEqual(stop.count, 1)
+        XCTAssertEqual(root["a"] as? Int, 1)
+
+        let fresh = try StatuslineConfig.plan(existing: nil, scriptPath: script, hookCommand: hook)
+        let empty = try StatuslineConfig.revert(existing: fresh.newData, scriptPath: script, hookCommand: hook)!
+        XCTAssertTrue(obj(empty).isEmpty)
+    }
+}

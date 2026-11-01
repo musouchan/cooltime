@@ -29,6 +29,9 @@ final class AppModel: ObservableObject {
     /// 管理画面で選ばれているアカウント。
     @Published var selected: UUID?
     private var dismissed: Set<String> = []
+    /// Claude の使用量を最後に確認した時刻と、最後に見た合図の時刻。
+    private var lastClaudeCheck: Date = .distantPast
+    private var lastPing: Date?
 
     let clock: Clock
 
@@ -38,6 +41,8 @@ final class AppModel: ObservableObject {
         load()
         autoDetect()
         reloadFiles()
+        lastPing = pingDate()
+        checkClaude()
         Task { [weak self] in
             // 分単位で静かに更新する。手元のファイルは自動で読み直す（通信なし）。
             while true {
@@ -50,6 +55,25 @@ final class AppModel: ObservableObject {
     func tick() {
         reloadFiles()
         now = clock.now
+        // Claude Code の返事が終わった合図があればすぐ、無くても5分おきに使用量を確認する。
+        if let ping = pingDate(), ping > (lastPing ?? .distantPast) {
+            lastPing = ping
+            checkClaude()
+        } else if clock.now.timeIntervalSince(lastClaudeCheck) >= 5 * 60 {
+            checkClaude()
+        }
+    }
+
+    private func pingDate() -> Date? {
+        try? Paths.claudePing.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    /// 公式の Claude Code の /usage で、Claude の使用量を確認する。
+    func checkClaude() {
+        lastClaudeCheck = clock.now
+        for a in accounts where a.serviceID == "claude" && a.slot == "default" {
+            Task { await refresh(a) }
+        }
     }
 
     // MARK: 一覧
@@ -92,9 +116,12 @@ final class AppModel: ObservableObject {
     /// 手元のファイルを読むだけのもの。
     func reloadFiles() {
         for a in accounts where Catalog.service(a.serviceID)?.method == .statuslineFile {
-            if let s = try? Fetchers.readClaude(slot: a.slot) {
-                if snapshots[a.id] != s { snapshots[a.id] = s; save() }
+            // /usage とステータスラインの、新しい方を使う。
+            if let s = try? Fetchers.readClaude(slot: a.slot),
+               s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
+                snapshots[a.id] = s
                 errors[a.id] = nil
+                save()
             }
         }
     }

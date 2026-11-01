@@ -8,6 +8,7 @@ enum FetchError: LocalizedError {
     case codexNotFound
     case codexNoResponse
     case noFile
+    case claudeNotFound
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +18,7 @@ enum FetchError: LocalizedError {
         case .codexNotFound: return "Codex が見つかりません（ChatGPT アプリか Codex CLI が必要）"
         case .codexNoResponse: return "Codex から応答がありませんでした（ログイン済みか確認）"
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
+        case .claudeNotFound: return "Claude Code（ターミナル版）が見つかりません"
         }
     }
 }
@@ -30,6 +32,8 @@ enum Paths {
     }
     static var state: URL { dir.appendingPathComponent("state.json") }
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
+    /// Claude Code の Stop フックが更新する合図のファイル（中身は空）。
+    static var claudePing: URL { dir.appendingPathComponent("claude-ping") }
 }
 
 struct FetchResult {
@@ -58,6 +62,17 @@ enum Fetchers {
         let now = Date()
         switch service.method {
         case .statuslineFile:
+            // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
+            // 取れなければ、ステータスラインの記録に戻る。
+            if account.slot == "default" {
+                do {
+                    let text = try await Task.detached { try ClaudeCLI.usage() }.value
+                    return FetchResult(snapshot: try ClaudeUsageText.parse(text, now: now), identity: claudeIdentity())
+                } catch {
+                    if let s = try? readClaude(slot: account.slot) { return FetchResult(snapshot: s, identity: claudeIdentity()) }
+                    throw error
+                }
+            }
             return FetchResult(snapshot: try readClaude(slot: account.slot), identity: claudeIdentity())
         case .codexAppServer:
             let (limits, acct) = try await Task.detached { try Codex.query() }.value
@@ -179,5 +194,61 @@ enum Codex {
         }
         if let l = got[2] { return (l, got[3]) }
         throw exe == nil ? FetchError.codexNotFound : FetchError.codexNoResponse
+    }
+}
+
+/// 公式の Claude Code（改変なし）に `claude -p "/usage"` を実行させ、その表示を受け取る。
+/// Cooltime は Claude のログイン情報に触れない。問い合わせるのは Claude Code 自身。
+enum ClaudeCLI {
+    static func executable() -> URL? {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "\(home)/.local/bin/claude",
+            "\(home)/bin/claude",
+            "\(home)/.claude/local/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            "\(home)/.npm-global/bin/claude",
+            "\(home)/.bun/bin/claude",
+        ]
+        return candidates.first { fm.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+
+    static func usage() throws -> String {
+        // セッションを履歴に残さないオプションを優先する。使えない版なら、付けずに実行する。
+        if let text = try? run(["-p", "/usage", "--no-session-persistence"]), text.contains("%") { return text }
+        return try run(["-p", "/usage"])
+    }
+
+    private static func run(_ args: [String]) throws -> String {
+        let p = Process()
+        let exe = executable()
+        if let exe {
+            p.executableURL = exe
+            p.arguments = args
+        } else {
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = ["-l", "-c", "exec claude " + args.map { "'\($0)'" }.joined(separator: " ")]
+        }
+        var env = ProcessInfo.processInfo.environment
+        // 自分の確認で、合図のフックが動かないようにする目印。
+        env["COOLTIME_USAGE_PROBE"] = "1"
+        p.environment = env
+        p.currentDirectoryURL = Paths.dir
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        p.standardInput = FileHandle.nullDevice
+        do { try p.run() } catch { throw FetchError.claudeNotFound }
+
+        let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: killer)
+        defer { killer.cancel() }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let text = String(decoding: data, as: UTF8.self)
+        if text.isEmpty && exe == nil { throw FetchError.claudeNotFound }
+        return text
     }
 }

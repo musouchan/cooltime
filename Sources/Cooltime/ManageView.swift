@@ -111,7 +111,7 @@ private struct DetailView: View {
                 Text(item.service.hint).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "ステータスラインから取得")
+            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
                 .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(.quaternary))
         }
@@ -223,12 +223,12 @@ private struct StatuslineSetupView: View {
             if isSet {
                 HStack {
                     Image(systemName: "checkmark.circle").foregroundStyle(.green)
-                    Text("設定済み。Claude Code を使うと、利用枠が表示されます。")
+                    Text("設定済み。返事が終わるたびに、すぐ更新されます。")
                     Spacer()
                     Button("元に戻す") { run { try StatuslineSetup.revert() } }
                 }
             } else {
-                Text("残りの時間を見るには、Claude Code のステータスラインに記録を足します。変更内容を確認してから設定します。元のファイルはバックアップを取ります。")
+                Text("使用量は、公式の Claude Code（/usage）で5分おきに自動で確認します。デスクトップアプリやターミナルで返事が終わるたびにすぐ更新するには、Claude Code に合図の設定を足します。変更内容を確認してから設定し、元のファイルはバックアップを取ります。")
                     .font(.callout)
                 Button("設定する…") {
                     do { change = try StatuslineSetup.preview() } catch { message = error.localizedDescription }
@@ -243,6 +243,10 @@ private struct StatuslineSetupView: View {
                 code(w.change.before)
                 Text("変更後の statusLine").font(.caption).foregroundStyle(.secondary)
                 code(w.change.after)
+                if w.change.addsHook {
+                    Text("追加するフック（返事が終わったら Cooltime に合図。通信はしません）").font(.caption).foregroundStyle(.secondary)
+                    code(StatuslineSetup.hookCommand)
+                }
                 Text("すでにステータスラインがある場合は、そのまま表示も続きます。元のファイルは settings.json.cooltime-backup-… として残ります。")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {

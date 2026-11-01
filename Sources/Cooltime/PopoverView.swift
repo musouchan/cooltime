@@ -118,7 +118,7 @@ private struct AvailableRow: View {
         }()
         RowFrame(item: item, subtitle: sub) {
             if item.state == .unset {
-                if item.service.method == .statuslineFile {
+                if item.service.method == .statuslineFile && !StatuslineSetup.isSet() {
                     Button("設定…") {
                         model.selected = item.id
                         openWindow(id: "manage")

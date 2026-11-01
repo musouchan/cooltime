@@ -1,13 +1,15 @@
 import Foundation
 
-/// Claude Code の settings.json に、ステータスラインの記録スクリプトを足す（または外す）。
-/// 本人が内容を見て同意したときだけ書く前提。すでにあるステータスラインは壊さず、
-/// 記録したうえで、そのまま表示も続ける形にする。
+/// Claude Code の settings.json に、Cooltime 用の設定を足す（または外す）。
+/// - statusLine: ターミナル版の利用枠を記録するスクリプト。すでにあるものは壊さず、表示も続ける。
+/// - Stop フック: 返事が終わったら、Cooltime に合図する（手元のファイルを更新するだけ）。
+/// 本人が内容を見て同意したときだけ書く前提。
 public enum StatuslineConfig {
     public struct Change: Equatable {
         public let newData: Data
         public let before: String
         public let after: String
+        public let addsHook: Bool
         public let alreadySet: Bool
     }
 
@@ -26,18 +28,29 @@ public enum StatuslineConfig {
         try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
-    public static func isSet(_ data: Data?, scriptPath: String) -> Bool {
-        guard let root = try? loadRoot(data), let sl = root["statusLine"] as? [String: Any],
-              let cmd = sl["command"] as? String else { return false }
+    static func statuslineIsOurs(_ root: [String: Any], _ scriptPath: String) -> Bool {
+        guard let sl = root["statusLine"] as? [String: Any], let cmd = sl["command"] as? String else { return false }
         return cmd.hasPrefix(quote(scriptPath))
     }
 
-    public static func plan(existing: Data?, scriptPath: String) throws -> Change {
+    static func hookIsSet(_ root: [String: Any], _ hookCommand: String) -> Bool {
+        guard let hooks = root["hooks"] as? [String: Any], let stop = hooks["Stop"] as? [[String: Any]] else { return false }
+        return stop.contains { group in
+            (group["hooks"] as? [[String: Any]] ?? []).contains { ($0["command"] as? String) == hookCommand }
+        }
+    }
+
+    public static func isSet(_ data: Data?, scriptPath: String, hookCommand: String? = nil) -> Bool {
+        guard let root = try? loadRoot(data) else { return false }
+        return statuslineIsOurs(root, scriptPath) && (hookCommand.map { hookIsSet(root, $0) } ?? true)
+    }
+
+    public static func plan(existing: Data?, scriptPath: String, hookCommand: String? = nil) throws -> Change {
         var root = try loadRoot(existing)
         let ours = quote(scriptPath)
         var before = "（未設定）"
-        var command = ours
-        var statusLine: [String: Any] = [:]
+        var after = ours
+        var changed = false
 
         if let current = root["statusLine"] {
             guard let sl = current as? [String: Any], (sl["type"] as? String) == "command",
@@ -45,33 +58,71 @@ public enum StatuslineConfig {
                 throw ParseError.unsupported("既存のステータスラインの形式に対応していないため、変更しません")
             }
             before = cmd
-            if cmd.hasPrefix(ours) {
-                return Change(newData: existing ?? Data(), before: cmd, after: cmd, alreadySet: true)
+            after = cmd
+            if !cmd.hasPrefix(ours) {
+                var updated = sl
+                after = ours + " " + shSingle(cmd)
+                updated["command"] = after
+                root["statusLine"] = updated
+                changed = true
             }
-            command = ours + " " + shSingle(cmd)
-            statusLine = sl
+        } else {
+            root["statusLine"] = ["type": "command", "command": ours]
+            changed = true
         }
-        statusLine["type"] = "command"
-        statusLine["command"] = command
-        root["statusLine"] = statusLine
-        return Change(newData: try serialize(root), before: before, after: command, alreadySet: false)
+
+        var addsHook = false
+        if let hookCommand, !hookIsSet(root, hookCommand) {
+            if root["hooks"] != nil && !(root["hooks"] is [String: Any]) {
+                throw ParseError.unsupported("既存のフックの形式に対応していないため、変更しません")
+            }
+            var hooks = root["hooks"] as? [String: Any] ?? [:]
+            if hooks["Stop"] != nil && !(hooks["Stop"] is [[String: Any]]) {
+                throw ParseError.unsupported("既存のフックの形式に対応していないため、変更しません")
+            }
+            var stop = hooks["Stop"] as? [[String: Any]] ?? []
+            stop.append(["hooks": [["type": "command", "command": hookCommand]]])
+            hooks["Stop"] = stop
+            root["hooks"] = hooks
+            addsHook = true
+            changed = true
+        }
+
+        return Change(newData: changed ? try serialize(root) : (existing ?? Data()),
+                      before: before, after: after, addsHook: addsHook, alreadySet: !changed)
     }
 
-    /// 元に戻す。Cooltime が足した形でなければ nil（触らない）。
-    public static func revert(existing: Data, scriptPath: String) throws -> Data? {
+    /// 元に戻す。Cooltime が足したものだけを外す。何も外すものが無ければ nil（触らない）。
+    public static func revert(existing: Data, scriptPath: String, hookCommand: String? = nil) throws -> Data? {
         var root = try loadRoot(existing)
         let ours = quote(scriptPath)
-        guard var sl = root["statusLine"] as? [String: Any], let cmd = sl["command"] as? String,
-              cmd.hasPrefix(ours) else { return nil }
-        let rest = String(cmd.dropFirst(ours.count)).trimmingCharacters(in: .whitespaces)
-        if rest.isEmpty {
-            root.removeValue(forKey: "statusLine")
-        } else if rest.count >= 2, rest.hasPrefix("'"), rest.hasSuffix("'") {
-            sl["command"] = String(rest.dropFirst().dropLast()).replacingOccurrences(of: "'\\''", with: "'")
-            root["statusLine"] = sl
-        } else {
-            return nil
+        var changed = false
+
+        if var sl = root["statusLine"] as? [String: Any], let cmd = sl["command"] as? String, cmd.hasPrefix(ours) {
+            let rest = String(cmd.dropFirst(ours.count)).trimmingCharacters(in: .whitespaces)
+            if rest.isEmpty {
+                root.removeValue(forKey: "statusLine")
+                changed = true
+            } else if rest.count >= 2, rest.hasPrefix("'"), rest.hasSuffix("'") {
+                sl["command"] = String(rest.dropFirst().dropLast()).replacingOccurrences(of: "'\\''", with: "'")
+                root["statusLine"] = sl
+                changed = true
+            }
         }
-        return try serialize(root)
+
+        if let hookCommand, hookIsSet(root, hookCommand),
+           var hooks = root["hooks"] as? [String: Any], let stop = hooks["Stop"] as? [[String: Any]] {
+            let kept = stop.compactMap { group -> [String: Any]? in
+                var g = group
+                let inner = (group["hooks"] as? [[String: Any]] ?? []).filter { ($0["command"] as? String) != hookCommand }
+                if inner.isEmpty && group["hooks"] != nil { return nil }
+                g["hooks"] = inner
+                return g
+            }
+            changed = true
+            if kept.isEmpty { hooks.removeValue(forKey: "Stop") } else { hooks["Stop"] = kept }
+            if hooks.isEmpty { root.removeValue(forKey: "hooks") } else { root["hooks"] = hooks }
+        }
+        return changed ? try serialize(root) : nil
     }
 }
