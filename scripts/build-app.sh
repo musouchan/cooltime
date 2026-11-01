@@ -1,8 +1,9 @@
 #!/bin/bash
-# Cooltime.app を build/ に作る（署名は ad-hoc）。使い方: scripts/build-app.sh [バージョン]
+# Cooltime.app を build/ に作る（署名は ad-hoc）。使い方: scripts/build-app.sh [バージョン] [ビルド（コミットID）]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 version="${1:-0.1.0}"
+build="${2:-$version}"
 swift build -c release --arch arm64 --arch x86_64
 bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/Cooltime"
 app="build/Cooltime.app"
@@ -20,7 +21,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>Cooltime</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
-  <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>

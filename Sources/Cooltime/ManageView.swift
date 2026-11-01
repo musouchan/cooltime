@@ -28,6 +28,7 @@ struct ManageView: View {
                     } label: { Image(systemName: "minus") }
                         .disabled(model.selected == nil).accessibilityLabel("削除")
                     Spacer()
+                    Text(versionText).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(8)
             }
@@ -41,6 +42,14 @@ struct ManageView: View {
             }
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
+    }
+
+    /// 「Cooltime 0.1.0 (abc1234)」。タグのビルドは版、ほかは短いコミット ID が付く。
+    private var versionText: String {
+        let info = Bundle.main.infoDictionary
+        guard let v = info?["CFBundleShortVersionString"] as? String else { return "開発版" }
+        let b = info?["CFBundleVersion"] as? String
+        return "Cooltime \(v)" + (b.map { $0 == v ? "" : " (\($0))" } ?? "")
     }
 
     private func sidebarRow(_ item: Item) -> some View {
