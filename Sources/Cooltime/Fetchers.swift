@@ -6,6 +6,7 @@ enum FetchError: LocalizedError {
     case http(Int)
     case network
     case codexNotFound
+    case codexNoResponse
     case noFile
 
     var errorDescription: String? {
@@ -13,7 +14,8 @@ enum FetchError: LocalizedError {
         case .noKey: return "APIキーが未設定です"
         case .http(let c): return c == 401 || c == 403 ? "認証に失敗しました（APIキーを確認）" : "取得に失敗しました（HTTP \(c)）"
         case .network: return "通信できませんでした"
-        case .codexNotFound: return "Codex が見つかりません（ログイン済みか確認）"
+        case .codexNotFound: return "Codex が見つかりません（ChatGPT アプリか Codex CLI が必要）"
+        case .codexNoResponse: return "Codex から応答がありませんでした（ログイン済みか確認）"
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
         }
     }
@@ -109,12 +111,35 @@ enum Fetchers {
 
 /// `codex app-server` に JSON-RPC（1行1メッセージ）で問い合わせる。
 enum Codex {
+    /// Codex の実行ファイルを探す。ChatGPT アプリに同梱のものを最優先で使い、
+    /// 無ければ Homebrew / npm などの場所を見る。
+    static func executable() -> URL? {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        let candidates = [
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+            "\(home)/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "\(home)/.npm-global/bin/codex",
+            "\(home)/.bun/bin/codex",
+            "\(home)/.local/bin/codex",
+        ]
+        return candidates.first { fm.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+
     /// 利用枠（id 2）とアカウント情報（id 3）の応答の行を返す。
     static func query() throws -> (limits: Data, account: Data?) {
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        // ログインシェル経由で、GUI アプリからは見えない PATH（npm / Homebrew）を拾う。
-        p.arguments = ["-l", "-c", "exec codex app-server"]
+        let exe = executable()
+        if let exe {
+            p.executableURL = exe
+            p.arguments = ["app-server"]
+        } else {
+            // 見つからないときは、ログインシェル経由で PATH（npm / Homebrew など）から探す。
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = ["-l", "-c", "exec codex app-server"]
+        }
         let stdin = Pipe(), stdout = Pipe()
         p.standardInput = stdin
         p.standardOutput = stdout
@@ -153,6 +178,6 @@ enum Codex {
             }
         }
         if let l = got[2] { return (l, got[3]) }
-        throw FetchError.codexNotFound
+        throw exe == nil ? FetchError.codexNotFound : FetchError.codexNoResponse
     }
 }
