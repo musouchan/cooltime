@@ -33,7 +33,7 @@ public enum Catalog {
         ServiceDef(id: "claude", name: "Claude / Claude Code", kind: .subscription, method: .statuslineFile,
                    defaultPaymentURL: "https://claude.ai/settings/billing",
                    bundleIDs: ["com.anthropic.claudefordesktop"],
-                   hint: "Pro / Max 契約のみ。公式の Claude Code（/usage）から、5分おきに自動で取得します。",
+                   hint: "Pro / Max 契約のみ。公式の Claude Code（/usage）から、1分おきに自動で取得します。",
                    apiKeyHelp: nil),
         ServiceDef(id: "codex", name: "ChatGPT / Codex", kind: .subscription, method: .codexAppServer,
                    defaultPaymentURL: "https://chatgpt.com/",

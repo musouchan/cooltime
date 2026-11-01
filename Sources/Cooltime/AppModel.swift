@@ -55,11 +55,14 @@ final class AppModel: ObservableObject {
     func tick() {
         reloadFiles()
         now = clock.now
-        // Claude Code の返事が終わった合図があればすぐ、無くても5分おきに使用量を確認する。
+        // Claude Code の返事が終わった合図があればすぐ、無くても1分おきに使用量を確認する。
+        // 失敗が続くときは、問い合わせすぎないよう5分おきに落とす。
+        let failing = accounts.contains { $0.serviceID == "claude" && errors[$0.id] != nil }
+        let interval: TimeInterval = failing ? 5 * 60 : 60
         if let ping = pingDate(), ping > (lastPing ?? .distantPast) {
             lastPing = ping
             checkClaude()
-        } else if clock.now.timeIntervalSince(lastClaudeCheck) >= 5 * 60 {
+        } else if clock.now.timeIntervalSince(lastClaudeCheck) >= interval {
             checkClaude()
         }
     }

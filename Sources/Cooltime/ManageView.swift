@@ -228,7 +228,7 @@ private struct StatuslineSetupView: View {
                     Button("元に戻す") { run { try StatuslineSetup.revert() } }
                 }
             } else {
-                Text("使用量は、公式の Claude Code（/usage）で5分おきに自動で確認します。デスクトップアプリやターミナルで返事が終わるたびにすぐ更新するには、Claude Code に合図の設定を足します。変更内容を確認してから設定し、元のファイルはバックアップを取ります。")
+                Text("使用量は、公式の Claude Code（/usage）で1分おきに自動で確認します。デスクトップアプリやターミナルで返事が終わるたびにすぐ更新するには、Claude Code に合図の設定を足します。変更内容を確認してから設定し、元のファイルはバックアップを取ります。")
                     .font(.callout)
                 Button("設定する…") {
                     do { change = try StatuslineSetup.preview() } catch { message = error.localizedDescription }
