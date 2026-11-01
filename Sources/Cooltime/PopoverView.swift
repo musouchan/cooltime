@@ -33,6 +33,8 @@ struct PopoverView: View {
                     openWindow(id: "manage")
                     NSApp.activate(ignoringOtherApps: true)
                 }
+                Button("終了") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q")
             }
             .padding(12)
         }
