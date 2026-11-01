@@ -30,7 +30,19 @@ enum Paths {
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
 }
 
+struct FetchResult {
+    var snapshot: Snapshot
+    var identity: AccountIdentity?
+}
+
 enum Fetchers {
+    /// Claude Code が手元に持つ設定ファイルから、メールアドレスだけを読む（通信なし）。
+    static func claudeIdentity() -> AccountIdentity? {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude.json")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return ClaudeAccount.parse(data)
+    }
+
     /// 手元のファイルを読むだけ（通信なし）。自動で読み直してよい。
     static func readClaude(slot: String) throws -> Snapshot {
         let url = Paths.statusline(slot: slot)
@@ -40,33 +52,34 @@ enum Fetchers {
     }
 
     /// 通信を伴う取得。更新ボタンのときだけ呼ぶ。送り先は各サービスの公式の窓口だけ。
-    static func fetch(account: Account, service: ServiceDef) async throws -> Snapshot {
+    static func fetch(account: Account, service: ServiceDef) async throws -> FetchResult {
         let now = Date()
         switch service.method {
         case .statuslineFile:
-            return try readClaude(slot: account.slot)
+            return FetchResult(snapshot: try readClaude(slot: account.slot), identity: claudeIdentity())
         case .codexAppServer:
-            let line = try await Task.detached { try Codex.rateLimitsLine() }.value
-            return try CodexRateLimits.parse(line, fetchedAt: now)
+            let (limits, acct) = try await Task.detached { try Codex.query() }.value
+            return FetchResult(snapshot: try CodexRateLimits.parse(limits, fetchedAt: now),
+                               identity: acct.flatMap(CodexAccount.parse))
         case .apiKey:
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
-                return try ElevenLabs.parse(data, fetchedAt: now)
+                return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
             case "firecrawl":
                 data = try await get("https://api.firecrawl.dev/v2/team/credit-usage", headers: bearer(key))
-                return try Firecrawl.parse(data, fetchedAt: now)
+                return FetchResult(snapshot: try Firecrawl.parse(data, fetchedAt: now), identity: nil)
             case "vercel-ai-gateway":
                 data = try await get("https://ai-gateway.vercel.sh/v1/credits", headers: bearer(key))
-                return try VercelAIGateway.parse(data, fetchedAt: now)
+                return FetchResult(snapshot: try VercelAIGateway.parse(data, fetchedAt: now), identity: nil)
             case "openrouter":
                 data = try await get("https://openrouter.ai/api/v1/key", headers: bearer(key))
-                return try OpenRouter.parse(data, fetchedAt: now)
+                return FetchResult(snapshot: try OpenRouter.parse(data, fetchedAt: now), identity: nil)
             case "deepseek":
                 data = try await get("https://api.deepseek.com/user/balance", headers: bearer(key))
-                return try DeepSeek.parse(data, fetchedAt: now)
+                return FetchResult(snapshot: try DeepSeek.parse(data, fetchedAt: now), identity: nil)
             default:
                 throw ParseError.unsupported("未対応のサービスです")
             }
@@ -96,7 +109,8 @@ enum Fetchers {
 
 /// `codex app-server` に JSON-RPC（1行1メッセージ）で問い合わせる。
 enum Codex {
-    static func rateLimitsLine() throws -> Data {
+    /// 利用枠（id 2）とアカウント情報（id 3）の応答の行を返す。
+    static func query() throws -> (limits: Data, account: Data?) {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         // ログインシェル経由で、GUI アプリからは見えない PATH（npm / Homebrew）を拾う。
@@ -115,10 +129,12 @@ enum Codex {
             #"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"cooltime","title":"Cooltime","version":"0.1.0"}}}"#,
             #"{"method":"initialized"}"#,
             #"{"id":2,"method":"account/rateLimits/read"}"#,
+            #"{"id":3,"method":"account/read","params":{"refreshToken":false}}"#,
         ]
         for m in messages { stdin.fileHandleForWriting.write(Data((m + "\n").utf8)) }
 
         var buffer = Data()
+        var got: [Int: Data] = [:]
         while true {
             let chunk = stdout.fileHandleForReading.availableData
             if chunk.isEmpty { break }
@@ -126,12 +142,17 @@ enum Codex {
             while let nl = buffer.firstIndex(of: 0x0A) {
                 let line = buffer.subdata(in: buffer.startIndex..<nl)
                 buffer.removeSubrange(buffer.startIndex...nl)
-                if let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-                   (obj["id"] as? Int) == 2 {
-                    return line
+                guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      let id = obj["id"] as? Int, id == 2 || id == 3 else { continue }
+                got[id] = line
+                if id == 2 {
+                    // アカウント情報は付けたし。待っても数秒まで。
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 3) { if p.isRunning { p.terminate() } }
                 }
+                if let l = got[2], got[3] != nil { return (l, got[3]) }
             }
         }
+        if let l = got[2] { return (l, got[3]) }
         throw FetchError.codexNotFound
     }
 }

@@ -4,13 +4,12 @@ import CooltimeCore
 
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
-    @State private var selection: UUID?
     @State private var adding = false
 
     var body: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                List(selection: $selection) {
+                List(selection: $model.selected) {
                     Section("サブスク（プランの利用枠）") {
                         ForEach(model.subscriptions) { sidebarRow($0) }
                     }
@@ -22,26 +21,35 @@ struct ManageView: View {
                 HStack {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("サービスを追加")
                     Button {
-                        if let id = selection, let a = model.accounts.first(where: { $0.id == id }) {
-                            selection = nil
+                        if let id = model.selected, let a = model.accounts.first(where: { $0.id == id }) {
+                            model.selected = nil
                             model.remove(a)
                         }
                     } label: { Image(systemName: "minus") }
-                        .disabled(selection == nil).accessibilityLabel("削除")
+                        .disabled(model.selected == nil).accessibilityLabel("削除")
                     Spacer()
+                    Text(versionText).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(8)
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
-            if let id = selection, let item = model.items.first(where: { $0.id == id }) {
+            if let id = model.selected, let item = model.items.first(where: { $0.id == id }) {
                 DetailView(item: item).id(id)
             } else {
                 Text(model.accounts.isEmpty ? "「＋」から、使っているサービスを追加してください" : "サービスを選んでください")
                     .foregroundStyle(.secondary)
             }
         }
-        .sheet(isPresented: $adding) { AddServiceView { selection = $0 } }
+        .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
+    }
+
+    /// 「Cooltime 0.1.0 (abc1234)」。タグのビルドは版、ほかは短いコミット ID が付く。
+    private var versionText: String {
+        let info = Bundle.main.infoDictionary
+        guard let v = info?["CFBundleShortVersionString"] as? String else { return "開発版" }
+        let b = info?["CFBundleVersion"] as? String
+        return "Cooltime \(v)" + (b.map { $0 == v ? "" : " (\($0))" } ?? "")
     }
 
     private func sidebarRow(_ item: Item) -> some View {
@@ -146,16 +154,7 @@ private struct DetailView: View {
     @ViewBuilder private var setup: some View {
         switch item.service.method {
         case .statuslineFile:
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Claude Code の設定（自分で行います）").font(.caption).foregroundStyle(.secondary)
-                Text("このアプリは、他のツールの設定を書き換えません。~/.claude/settings.json の statusLine に、下のコマンドを自分で設定してください。すでにステータスラインがある場合は、そのコマンドを引数として渡せば、そのまま表示も続きます。")
-                    .font(.callout)
-                let cmd = #"{ "statusLine": { "type": "command", "command": "/path/to/cooltime-statusline.sh" } }"#
-                Text(cmd).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-                    .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
-                Text("スクリプトは README を参照。取得元: \(Paths.statusline(slot: draft.slot).path)").font(.caption).foregroundStyle(.secondary)
-            }
+            StatuslineSetupView()
         case .codexAppServer:
             HStack {
                 Button { Task { await model.refresh(item.account) } } label: { Label("更新", systemImage: "arrow.clockwise") }
@@ -210,5 +209,63 @@ private struct DetailView: View {
                 }
             }
         }
+    }
+}
+
+private struct StatuslineSetupView: View {
+    @State private var isSet = StatuslineSetup.isSet()
+    @State private var change: StatuslineConfig.Change?
+    @State private var message: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Claude Code との連携").font(.caption).foregroundStyle(.secondary)
+            if isSet {
+                HStack {
+                    Image(systemName: "checkmark.circle").foregroundStyle(.green)
+                    Text("設定済み。Claude Code を使うと、利用枠が表示されます。")
+                    Spacer()
+                    Button("元に戻す") { run { try StatuslineSetup.revert() } }
+                }
+            } else {
+                Text("残りの時間を見るには、Claude Code のステータスラインに記録を足します。変更内容を確認してから設定します。元のファイルはバックアップを取ります。")
+                    .font(.callout)
+                Button("設定する…") {
+                    do { change = try StatuslineSetup.preview() } catch { message = error.localizedDescription }
+                }
+            }
+            if let message { Text(message).font(.callout).foregroundStyle(.red) }
+        }
+        .sheet(item: Binding(get: { change.map { Wrapper(change: $0) } }, set: { change = $0?.change })) { w in
+            VStack(alignment: .leading, spacing: 12) {
+                Text("~/.claude/settings.json を変更します").font(.title3).fontWeight(.semibold)
+                Text("変更前の statusLine").font(.caption).foregroundStyle(.secondary)
+                code(w.change.before)
+                Text("変更後の statusLine").font(.caption).foregroundStyle(.secondary)
+                code(w.change.after)
+                Text("すでにステータスラインがある場合は、そのまま表示も続きます。元のファイルは settings.json.cooltime-backup-… として残ります。")
+                    .font(.callout).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("キャンセル") { change = nil }
+                    Button("設定する") { let c = w.change; change = nil; run { try StatuslineSetup.apply(c) } }
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(20).frame(width: 520)
+        }
+    }
+
+    private struct Wrapper: Identifiable { let change: StatuslineConfig.Change; var id: String { change.after } }
+
+    private func code(_ text: String) -> some View {
+        Text(text).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+            .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary))
+    }
+
+    private func run(_ work: () throws -> Void) {
+        do { try work(); message = nil } catch { message = error.localizedDescription }
+        isSet = StatuslineSetup.isSet()
     }
 }

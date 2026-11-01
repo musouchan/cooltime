@@ -147,3 +147,72 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(f.string(from: OpenRouter.nextReset("weekly", after: base)!), "2026-11-02T00:00:00Z")
     }
 }
+
+final class IdentityTests: XCTestCase {
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testClaudeAccountReadsOnlyEmail() {
+        let id = ClaudeAccount.parse(d("""
+        {"oauthAccount":{"emailAddress":"me@example.com","organizationName":"Me"},"projects":{}}
+        """))
+        XCTAssertEqual(id, AccountIdentity(email: "me@example.com"))
+        XCTAssertNil(ClaudeAccount.parse(d("{\"projects\":{}}")))
+    }
+
+    func testCodexAccountMapsPlanToType() {
+        let plus = CodexAccount.parse(d("{\"id\":3,\"result\":{\"account\":{\"type\":\"chatgpt\",\"email\":\"a@b.c\",\"planType\":\"plus\"}}}"))
+        XCTAssertEqual(plus, AccountIdentity(email: "a@b.c", plan: "Plus", type: .personal))
+        let team = CodexAccount.parse(d("{\"result\":{\"account\":{\"planType\":\"team\"}}}"))
+        XCTAssertEqual(team?.type, .business)
+        XCTAssertNil(CodexAccount.parse(d("{\"error\":{\"message\":\"x\"}}")))
+    }
+}
+
+final class StatuslineConfigTests: XCTestCase {
+    let script = "/Users/me/Library/Application Support/Cooltime/cooltime-statusline.sh"
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+    func obj(_ data: Data) -> [String: Any] { try! JSONSerialization.jsonObject(with: data) as! [String: Any] }
+
+    func testAddsToEmptyOrMissingFile() throws {
+        let c = try StatuslineConfig.plan(existing: nil, scriptPath: script)
+        let sl = obj(c.newData)["statusLine"] as! [String: Any]
+        XCTAssertEqual(sl["command"] as? String, "\"\(script)\"")
+        XCTAssertFalse(c.alreadySet)
+    }
+
+    func testKeepsOtherSettingsAndWrapsExistingStatusline() throws {
+        let existing = d("{\"theme\":\"dark\",\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\",\"padding\":2}}")
+        let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
+        let root = obj(c.newData)
+        XCTAssertEqual(root["theme"] as? String, "dark")
+        let sl = root["statusLine"] as! [String: Any]
+        XCTAssertEqual(sl["padding"] as? Int, 2)
+        XCTAssertTrue((sl["command"] as! String).hasPrefix("\"\(script)\" '"))
+        XCTAssertEqual(c.before, "echo it's me")
+        XCTAssertTrue(StatuslineConfig.isSet(c.newData, scriptPath: script))
+    }
+
+    func testIdempotent() throws {
+        let first = try StatuslineConfig.plan(existing: nil, scriptPath: script)
+        let second = try StatuslineConfig.plan(existing: first.newData, scriptPath: script)
+        XCTAssertTrue(second.alreadySet)
+    }
+
+    func testRevertRestoresOriginal() throws {
+        let existing = d("{\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\"}}")
+        let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
+        let back = try StatuslineConfig.revert(existing: c.newData, scriptPath: script)!
+        XCTAssertEqual((obj(back)["statusLine"] as! [String: Any])["command"] as? String, "echo it's me")
+
+        let fresh = try StatuslineConfig.plan(existing: d("{\"a\":1}"), scriptPath: script)
+        let none = try StatuslineConfig.revert(existing: fresh.newData, scriptPath: script)!
+        XCTAssertNil(obj(none)["statusLine"])
+        XCTAssertEqual(obj(none)["a"] as? Int, 1)
+    }
+
+    func testRefusesToTouchUnreadableOrUnknownShapes() {
+        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("not json"), scriptPath: script))
+        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("{\"statusLine\":\"x\"}"), scriptPath: script))
+        XCTAssertNil(try StatuslineConfig.revert(existing: d("{\"statusLine\":{\"type\":\"command\",\"command\":\"mine\"}}"), scriptPath: script))
+    }
+}

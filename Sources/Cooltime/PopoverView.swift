@@ -105,6 +105,7 @@ private struct StaleRow: View {
 
 private struct AvailableRow: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
     let item: Item
     var body: some View {
         let sub: String = {
@@ -115,7 +116,15 @@ private struct AvailableRow: View {
         }()
         RowFrame(item: item, subtitle: sub) {
             if item.state == .unset {
-                if item.service.method != .statuslineFile { RefreshButton(item: item) }
+                if item.service.method == .statuslineFile {
+                    Button("設定…") {
+                        model.selected = item.id
+                        openWindow(id: "manage")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                } else {
+                    RefreshButton(item: item)
+                }
             } else {
                 Text(item.snapshot.flatMap(availableSummary) ?? "").foregroundStyle(.secondary)
             }
