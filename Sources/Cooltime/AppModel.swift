@@ -33,8 +33,8 @@ final class AppModel: ObservableObject {
     /// 管理画面で選ばれているアカウント。
     @Published var selected: UUID?
     private var dismissed: Set<String> = []
-    /// Claude の使用量を最後に確認した時刻と、最後に見た合図の時刻。
-    private var lastClaudeCheck: Date = .distantPast
+    /// 自動更新を最後に行った時刻と、最後に見た合図の時刻。
+    private var lastAuto: [UUID: Date] = [:]
     private var lastPing: Date?
 
     let clock: Clock
@@ -46,7 +46,7 @@ final class AppModel: ObservableObject {
         autoDetect()
         reloadFiles()
         lastPing = pingDate()
-        checkClaude()
+        autoRefresh()
         Task { [weak self] in
             // 分単位で静かに更新する。手元のファイルは自動で読み直す（通信なし）。
             while true {
@@ -59,67 +59,34 @@ final class AppModel: ObservableObject {
     func tick() {
         reloadFiles()
         now = clock.now
-        // Claude Code の返事が終わった合図があればすぐ、無くても1分おきに使用量を確認する。
-        // 失敗が続くときは、問い合わせすぎないよう5分おきに落とす。
-        let failing = accounts.contains { $0.serviceID == "claude" && errors[$0.id] != nil }
-        let interval: TimeInterval = failing ? 5 * 60 : 60
-        if let ping = pingDate(), ping > (lastPing ?? .distantPast) {
-            lastPing = ping
-            checkClaude()
-        } else if clock.now.timeIntervalSince(lastClaudeCheck) >= interval {
-            checkClaude()
-        }
+        autoRefresh()
     }
 
     private func pingDate() -> Date? {
         try? Paths.claudePing.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
-    /// 公式の Claude Code の /usage で、Claude の使用量を確認する。
-    func checkClaude() {
-        lastClaudeCheck = clock.now
-        for a in accounts where a.serviceID == "claude" && a.slot == "default" {
-            Task { await refresh(a) }
+    /// 自動で更新するもの: Claude（公式の Claude Code の /usage）と、Codex（app-server）。
+    /// 1分おき。Claude Code の返事が終わった合図があれば、Claude はすぐ。
+    /// 失敗が続くものは、問い合わせすぎないよう5分おきに落とす。
+    /// APIキー系は、更新ボタンのときだけ。
+    private func autoRefresh() {
+        var pinged = false
+        if let ping = pingDate(), ping > (lastPing ?? .distantPast) {
+            lastPing = ping
+            pinged = true
+        }
+        for a in accounts {
+            guard let s = Catalog.service(a.serviceID) else { continue }
+            let auto = (s.method == .statuslineFile && a.slot == "default") || s.method == .codexAppServer
+            guard auto else { continue }
+            let interval: TimeInterval = errors[a.id] != nil ? 5 * 60 : 60
+            let due = clock.now.timeIntervalSince(lastAuto[a.id] ?? .distantPast) >= interval
+            if due || (pinged && a.serviceID == "claude") {
+                Task { await refresh(a) }
+            }
         }
     }
-
-    // MARK: 一覧
-
-    var items: [Item] {
-        accounts.compactMap { a in
-            guard let s = Catalog.service(a.serviceID) else { return nil }
-            let snap = snapshots[a.id]
-            let multiple = accounts.filter { $0.serviceID == a.serviceID }.count > 1
-            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple)
-        }
-    }
-
-    var subscriptions: [Item] { items.filter { $0.service.kind == .subscription } }
-
-    var limited: [Item] {
-        subscriptions.filter { if case .limited = $0.state { return true } else { return false } }
-            .sorted { untilDate($0) < untilDate($1) }
-    }
-    var stale: [Item] {
-        subscriptions.filter { if case .stale = $0.state { return true } else { return false } }
-    }
-    var available: [Item] {
-        subscriptions.filter { $0.state == .available || $0.state == .unset }
-    }
-    var credits: [Item] {
-        items.filter { $0.service.kind == .credit || $0.snapshot?.credit != nil }
-    }
-
-    func untilDate(_ i: Item) -> Date {
-        if case .limited(let d) = i.state { return d }
-        return .distantFuture
-    }
-
-    var menuBarPick: MenuBarPick? {
-        pickForMenuBar(subscriptions.map { (id: $0.id, state: $0.state) })
-    }
-
-    // MARK: 取得
 
     /// 手元のファイルを読むだけのもの。
     func reloadFiles() {
@@ -137,6 +104,7 @@ final class AppModel: ObservableObject {
     /// 通信を伴う取得。更新ボタンを押したときだけ呼ぶ。
     func refresh(_ account: Account) async {
         guard let service = Catalog.service(account.serviceID), !refreshing.contains(account.id) else { return }
+        lastAuto[account.id] = clock.now
         refreshing.insert(account.id)
         defer { refreshing.remove(account.id) }
         do {
@@ -171,9 +139,7 @@ final class AppModel: ObservableObject {
         if fm.fileExists(atPath: home.appendingPathComponent(".codex/auth.json").path) { found.append("codex") }
 
         for id in found where !dismissed.contains(id) && !accounts.contains(where: { $0.serviceID == id }) {
-            let a = add(serviceID: id)
-            // 初回だけ、Codex はアカウント情報と利用枠を1回取得する（通信）。
-            if id == "codex" { Task { await refresh(a) } }
+            add(serviceID: id)
         }
     }
 

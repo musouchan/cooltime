@@ -45,7 +45,7 @@ struct ManageView: View {
         .toolbar {
             ToolbarItem {
                 Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
-                    .help("すべてのサービスを更新します（通信します）")
+                    .help("すべてのサービスを今すぐ更新します（通信します）")
             }
         }
         .confirmationDialog("このサービスを削除しますか？", isPresented: Binding(get: { pendingDelete != nil },
@@ -156,13 +156,9 @@ private struct DetailView: View {
                 Text(item.service.hint).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            VStack(alignment: .trailing, spacing: 4) {
-                Button { Task { await model.refresh(item.account) } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .disabled(model.refreshing.contains(item.id) || (item.service.method == .apiKey && !Keychain.has(item.id)))
-                    .help("このサービスだけ更新します（通信します）")
-                Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
+            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
+                .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(.quaternary))
         }
     }
 
@@ -205,7 +201,7 @@ private struct DetailView: View {
         case .statuslineFile:
             StatuslineSetupView()
         case .codexAppServer:
-            Text("更新ボタンを押したときだけ、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
+            Text("1分おきに自動で、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
         case .apiKey:
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.service.apiKeyHelp ?? "APIキー").font(.caption).foregroundStyle(.secondary)
