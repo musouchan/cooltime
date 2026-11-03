@@ -225,13 +225,31 @@ private struct DetailView: View {
     }
 
     @State private var editingPayment = false
+    @State private var paymentText = ""
 
     private var paymentTarget: URL? { model.paymentURL(draft) }
-    private var paymentInvalid: Bool {
-        let raw = draft.paymentURL.trimmingCharacters(in: .whitespaces)
-        guard !raw.isEmpty else { return false }
-        guard let u = URL(string: raw), ["http", "https"].contains(u.scheme), u.host != nil else { return true }
-        return false
+
+    private func validURL(_ raw: String) -> Bool {
+        guard let u = URL(string: raw), ["http", "https"].contains(u.scheme), u.host != nil else { return false }
+        return true
+    }
+    private var paymentTextInvalid: Bool {
+        let raw = paymentText.trimmingCharacters(in: .whitespaces)
+        return !raw.isEmpty && !validURL(raw)
+    }
+
+    /// 「変更」を押すと、表示されているアドレスの場所が、そのまま編集できる。
+    private func startEditingPayment() {
+        paymentText = paymentTarget?.absoluteString ?? item.service.defaultPaymentURL
+        editingPayment = true
+    }
+
+    /// 初期値と同じ（または空）なら、「初期値を使う」状態に戻す。保存まで、ここでする。
+    private func commitPayment() {
+        let raw = paymentText.trimmingCharacters(in: .whitespaces)
+        draft.paymentURL = (raw.isEmpty || raw == item.service.defaultPaymentURL) ? "" : raw
+        model.update(draft)
+        editingPayment = false
     }
 
     private var settings: some View {
@@ -249,38 +267,44 @@ private struct DetailView: View {
                     }
                 }
             }
-
-            Text("支払い").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
-            HStack {
-                Image(systemName: "creditcard").foregroundStyle(.secondary)
-                Text(paymentTarget?.host ?? "—").lineLimit(1)
-                if !draft.paymentURL.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Text("変更済み").font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button { editingPayment.toggle() } label: { Text(editingPayment ? "閉じる" : "変更") }
-                Button { if let u = paymentTarget { NSWorkspace.shared.open(u) } } label: {
-                    Label("支払いページを開く", systemImage: "arrow.up.right.square")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(paymentTarget == nil || paymentInvalid)
-            }
-            if editingPayment {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        TextField(item.service.defaultPaymentURL, text: $draft.paymentURL)
-                        Button("初期値に戻す") { draft.paymentURL = "" }
-                            .disabled(draft.paymentURL.isEmpty)
-                    }
-                    Text(paymentInvalid ? "https:// から始まるURLを入れてください" : "空のままなら、初期値のページを開きます。ログイン済みのブラウザで開きます。")
-                        .font(.caption).foregroundStyle(paymentInvalid ? Color.red : Color.secondary)
-                }
-            }
-
             HStack {
                 Spacer()
                 Button("保存") { model.update(draft) }
-                    .disabled(draft == item.account || paymentInvalid)
+                    .disabled(draft == item.account)
+            }
+
+            Text("支払い").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+            if editingPayment {
+                HStack {
+                    Image(systemName: "creditcard").foregroundStyle(.secondary)
+                    TextField(item.service.defaultPaymentURL, text: $paymentText)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { if !paymentTextInvalid { commitPayment() } }
+                    Button("初期値に戻す") { paymentText = item.service.defaultPaymentURL }
+                        .disabled(paymentText == item.service.defaultPaymentURL)
+                    Button("キャンセル") { editingPayment = false }
+                    Button("完了") { commitPayment() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(paymentTextInvalid)
+                }
+                Text(paymentTextInvalid ? "https:// から始まるURLを入れてください"
+                                        : "このアドレスのページを、「支払いページを開く」で開きます。")
+                    .font(.caption).foregroundStyle(paymentTextInvalid ? Color.red : Color.secondary)
+            } else {
+                HStack {
+                    Image(systemName: "creditcard").foregroundStyle(.secondary)
+                    Text(paymentTarget?.host ?? "—").lineLimit(1)
+                    if !draft.paymentURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("変更済み").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("変更") { startEditingPayment() }
+                    Button { if let u = paymentTarget { NSWorkspace.shared.open(u) } } label: {
+                        Label("支払いページを開く", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(paymentTarget == nil)
+                }
             }
         }
     }
