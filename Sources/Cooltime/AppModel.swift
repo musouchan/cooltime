@@ -7,9 +7,13 @@ struct Item: Identifiable {
     let service: ServiceDef
     let snapshot: Snapshot?
     let state: QuotaState
+    /// 同じサービスに複数のアカウントがあるときだけ、アカウント名を出して見分ける。
+    let showsAccountName: Bool
     var id: UUID { account.id }
 
-    var title: String { account.name.isEmpty ? service.name : "\(service.name) · \(account.name)" }
+    var title: String { showsAccountName && !account.name.isEmpty ? "\(service.name) · \(account.name)" : service.name }
+    /// 法人と分かっているときだけ、印を出す（個人は、出さない）。
+    var isBusiness: Bool { account.type == .business }
 }
 
 private struct Stored: Codable {
@@ -85,7 +89,8 @@ final class AppModel: ObservableObject {
         accounts.compactMap { a in
             guard let s = Catalog.service(a.serviceID) else { return nil }
             let snap = snapshots[a.id]
-            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now))
+            let multiple = accounts.filter { $0.serviceID == a.serviceID }.count > 1
+            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple)
         }
     }
 

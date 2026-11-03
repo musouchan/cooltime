@@ -6,6 +6,7 @@ struct ManageView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: Updater
     @State private var adding = false
+    @State private var pendingDelete: Account?
 
     var body: some View {
         NavigationSplitView {
@@ -22,10 +23,7 @@ struct ManageView: View {
                 HStack {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("サービスを追加")
                     Button {
-                        if let id = model.selected, let a = model.accounts.first(where: { $0.id == id }) {
-                            model.selected = nil
-                            model.remove(a)
-                        }
+                        pendingDelete = model.accounts.first(where: { $0.id == model.selected })
                     } label: { Image(systemName: "minus") }
                         .disabled(model.selected == nil).accessibilityLabel("削除")
                     Spacer()
@@ -44,6 +42,24 @@ struct ManageView: View {
             }
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
+        .toolbar {
+            ToolbarItem {
+                Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
+                    .help("すべてのサービスを更新します（通信します）")
+            }
+        }
+        .confirmationDialog("このサービスを削除しますか？", isPresented: Binding(get: { pendingDelete != nil },
+                                                                      set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible, presenting: pendingDelete) { a in
+            Button("削除", role: .destructive) {
+                model.selected = nil
+                model.remove(a)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: { a in
+            let name = Catalog.service(a.serviceID)?.name ?? ""
+            Text("「\(name)」の設定と、取得したデータを削除します。保存したAPIキーも、Keychain から削除します。自動で見つかったものは、次の起動でも戻りません（「＋」からいつでも追加できます）。")
+        }
     }
 
     /// 更新の確認も、入れ替えも、ボタンを押したときだけ。
@@ -82,8 +98,10 @@ struct ManageView: View {
             AppIconView(service: item.service, size: 20)
             VStack(alignment: .leading) {
                 Text(item.service.name)
-                Text(item.account.name.isEmpty ? item.account.type.label : "\(item.account.name) \(item.account.type.label)")
-                    .font(.caption).foregroundStyle(.secondary)
+                if !item.account.name.isEmpty || item.isBusiness {
+                    Text([item.account.name, item.isBusiness ? "法人" : ""].filter { !$0.isEmpty }.joined(separator: " "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer()
             Text(sidebarValue(item)).font(.caption).foregroundStyle(.secondary)
@@ -126,6 +144,8 @@ private struct DetailView: View {
             }
             .padding(20)
         }
+        // 自動入力されたメールアドレスなどを、古い入力欄で上書きしない。
+        .onChange(of: item.account) { _, new in draft = new }
     }
 
     private var header: some View {
@@ -136,9 +156,13 @@ private struct DetailView: View {
                 Text(item.service.hint).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
-                .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
-                .background(Capsule().fill(.quaternary))
+            VStack(alignment: .trailing, spacing: 4) {
+                Button { Task { await model.refresh(item.account) } } label: { Label("更新", systemImage: "arrow.clockwise") }
+                    .disabled(model.refreshing.contains(item.id) || (item.service.method == .apiKey && !Keychain.has(item.id)))
+                    .help("このサービスだけ更新します（通信します）")
+                Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -181,11 +205,7 @@ private struct DetailView: View {
         case .statuslineFile:
             StatuslineSetupView()
         case .codexAppServer:
-            HStack {
-                Button { Task { await model.refresh(item.account) } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .disabled(model.refreshing.contains(item.id))
-                Text("更新ボタンを押したときだけ、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
-            }
+            Text("更新ボタンを押したときだけ、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
         case .apiKey:
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.service.apiKeyHelp ?? "APIキー").font(.caption).foregroundStyle(.secondary)
@@ -202,19 +222,23 @@ private struct DetailView: View {
         }
     }
 
+    @State private var editingPayment = false
+
+    private var paymentTarget: URL? { model.paymentURL(draft) }
+    private var paymentInvalid: Bool {
+        let raw = draft.paymentURL.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return false }
+        guard let u = URL(string: raw), ["http", "https"].contains(u.scheme), u.host != nil else { return true }
+        return false
+    }
+
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("アカウントと支払い").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("アカウント").font(.caption).foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
                     Text("名前")
                     TextField("例: Max / 会社用", text: $draft.name)
-                }
-                GridRow {
-                    Text("個人／法人")
-                    Picker("", selection: $draft.type) {
-                        ForEach(AccountType.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden()
                 }
                 if item.service.method == .statuslineFile {
                     GridRow {
@@ -222,16 +246,39 @@ private struct DetailView: View {
                         TextField("default", text: $draft.slot)
                     }
                 }
-                GridRow {
-                    Text("支払いページ")
-                    TextField(item.service.defaultPaymentURL, text: $draft.paymentURL)
-                }
             }
+
+            Text("支払い").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
             HStack {
-                Button("保存") { model.update(draft) }.disabled(draft == item.account)
-                Button { if let u = model.paymentURL(draft) { NSWorkspace.shared.open(u) } } label: {
+                Image(systemName: "creditcard").foregroundStyle(.secondary)
+                Text(paymentTarget?.host ?? "—").lineLimit(1)
+                if !draft.paymentURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("変更済み").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { editingPayment.toggle() } label: { Text(editingPayment ? "閉じる" : "変更") }
+                Button { if let u = paymentTarget { NSWorkspace.shared.open(u) } } label: {
                     Label("支払いページを開く", systemImage: "arrow.up.right.square")
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(paymentTarget == nil || paymentInvalid)
+            }
+            if editingPayment {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField(item.service.defaultPaymentURL, text: $draft.paymentURL)
+                        Button("初期値に戻す") { draft.paymentURL = "" }
+                            .disabled(draft.paymentURL.isEmpty)
+                    }
+                    Text(paymentInvalid ? "https:// から始まるURLを入れてください" : "空のままなら、初期値のページを開きます。ログイン済みのブラウザで開きます。")
+                        .font(.caption).foregroundStyle(paymentInvalid ? Color.red : Color.secondary)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("保存") { model.update(draft) }
+                    .disabled(draft == item.account || paymentInvalid)
             }
         }
     }
