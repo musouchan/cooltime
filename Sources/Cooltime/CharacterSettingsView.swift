@@ -2,6 +2,7 @@ import SwiftUI
 import CooltimeCore
 
 /// 管理画面の「キャラクター」: 5種類から選ぶ。動きの設定。
+@MainActor
 struct CharacterSettingsView: View {
     @AppStorage(CharacterPrefs.characterKey) private var characterID = "bunny"
     @AppStorage(CharacterPrefs.motionKey) private var motion = MotionSetting.full.rawValue
