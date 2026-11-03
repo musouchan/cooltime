@@ -36,8 +36,14 @@ final class Updater: ObservableObject {
             let cfg = URLSessionConfiguration.ephemeral
             cfg.httpShouldSetCookies = false
             let (data, res) = try await URLSession(configuration: cfg).data(for: req)
-            guard (res as? HTTPURLResponse)?.statusCode == 200,
-                  let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let code = (res as? HTTPURLResponse)?.statusCode ?? 0
+            switch code {
+            case 200: break
+            case 404: throw UpdateError.notPublic
+            case 403, 429: throw UpdateError.rateLimited
+            default: throw UpdateError.http(code)
+            }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let tag = json["tag_name"] as? String else { throw UpdateError.check }
             guard AppVersion.isNewer(tag, than: current) else { state = .upToDate; return }
             let assets = json["assets"] as? [[String: Any]] ?? []
@@ -133,10 +139,14 @@ final class Updater: ObservableObject {
 }
 
 enum UpdateError: Error {
-    case check, noAsset, download, digest, unexpected, notWritable
+    case check, noAsset, download, digest, unexpected, notWritable, notPublic, rateLimited
+    case http(Int)
     var message: String {
         switch self {
-        case .check: return "更新を確認できませんでした"
+        case .check: return "更新を確認できませんでした（返事を読み取れませんでした）"
+        case .notPublic: return "リリースのページが見つかりません（HTTP 404）。リポジトリが非公開だと、アプリからは確認できません"
+        case .rateLimited: return "短い間に確認しすぎました。しばらくしてから、もう一度押してください"
+        case .http(let code): return "更新を確認できませんでした（HTTP \(code)）"
         case .noAsset: return "新しい版のファイルが見つかりません"
         case .download: return "ダウンロードに失敗しました"
         case .digest: return "ダウンロードしたファイルが一致しません。入れ替えをやめました"
