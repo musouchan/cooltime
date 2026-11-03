@@ -82,6 +82,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.status = status
         self.windows = windows
     }
+
+    /// もう一度アプリを開いたとき（Finder でのダブルクリック、`open` など）は、管理画面を開く。
+    /// メニューバーが混んでアイコンが隠れていても、設定にたどり着けるようにするため。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        windows?.showManage()
+        return true
+    }
 }
 
 @main
