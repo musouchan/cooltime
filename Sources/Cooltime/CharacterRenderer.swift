@@ -14,14 +14,33 @@ enum MotionSetting: String, CaseIterable, Identifiable {
     }
 }
 
+/// リセットの書き方。既定は日時（「17:20 リセット」）。選べる。
+enum ResetTimeStyle: String, CaseIterable, Identifiable {
+    case absolute, relative
+    static let key = "resetTimeStyle"
+    var id: String { rawValue }
+    var label: String { self == .absolute ? "日時" : "あと○時間" }
+
+    /// 例: 「17:20 リセット」「11/7 17:00 リセット」／「あと4時間12分」
+    func text(for reset: Date, now: Date) -> String {
+        switch self {
+        case .absolute: return "\(formatClock(reset, now: now)) リセット"
+        case .relative: return formatRemaining(until: reset, now: now)
+        }
+    }
+}
+
 enum CharacterPrefs {
     static let characterKey = "character"
     static let motionKey = "characterMotion"
+    /// 低電力モードのときも、フルに動かす（既定はオフ。仕様は、まばたきだけ）。
+    static let lowPowerKey = "characterMotionInLowPower"
 
     static var characterID: String {
         let v = UserDefaults.standard.string(forKey: characterKey) ?? "bunny"
         return CharacterData.ids.contains(v) ? v : "bunny"
     }
+    static var motionInLowPower: Bool { UserDefaults.standard.bool(forKey: lowPowerKey) }
     static var motion: MotionSetting {
         MotionSetting(rawValue: UserDefaults.standard.string(forKey: motionKey) ?? "") ?? .full
     }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import CooltimeCore
 
 /// 管理画面の「キャラクター」: 5種類から選ぶ。動きの設定。
@@ -6,12 +7,38 @@ import CooltimeCore
 struct CharacterSettingsView: View {
     @AppStorage(CharacterPrefs.characterKey) private var characterID = "bunny"
     @AppStorage(CharacterPrefs.motionKey) private var motion = MotionSetting.full.rawValue
+    @AppStorage(CharacterPrefs.lowPowerKey) private var inLowPower = false
+    @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
+    @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+
+    /// いま、動きが控えめ（または止まっている）理由。
+    private var reason: String? {
+        if reduceMotion { return "「視差効果を減らす」がオンのため、いまは止まっています。" }
+        if motion == MotionSetting.still.rawValue { return "「止める」を選んでいるため、止まっています。" }
+        if motion == MotionSetting.sometimes.rawValue { return "「ときどきだけ」を選んでいるため、まばたきだけです。" }
+        if lowPower && !inLowPower { return "低電力モードがオンのため、いまはまばたきだけです。" }
+        return nil
+    }
 
     private let states: [(CharacterState, String)] = [(.ok, "制限なし"), (.limit, "制限中"), (.fail, "取得に失敗")]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("リセットの書き方").font(.title3).fontWeight(.semibold)
+                    Picker("リセットの書き方", selection: $timeStyle) {
+                        ForEach(ResetTimeStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
+                    let sample = Date().addingTimeInterval(4 * 3600 + 12 * 60)
+                    Text("例: 残り87% · \((ResetTimeStyle(rawValue: timeStyle) ?? .absolute).text(for: sample, now: Date()))")
+                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                }
+
+                Divider()
+
                 Text("メニューバーのキャラクター").font(.title3).fontWeight(.semibold)
                 Text("状態は、色ではなく、耳の形・記号（z と ×）・動きで見分けられます。").font(.callout).foregroundStyle(.secondary)
 
@@ -30,11 +57,19 @@ struct CharacterSettingsView: View {
                         ForEach(MotionSetting.allCases) { Text($0.label).tag($0.rawValue) }
                     }
                     .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 360)
-                    Text("「ときどきだけ」は、制限なしのときのまばたきだけ。「視差効果を減らす」がオンのとき、低電力モードのとき、画面がスリープしているときは、自動で止まります。")
+                    Toggle("低電力モードのときも動かす", isOn: $inLowPower)
+                    Text("「ときどきだけ」は、制限なしのときのまばたきだけ。「視差効果を減らす」がオンのとき、画面がスリープしているときは、自動で止まります。低電力モードのときは、既定ではまばたきだけです（上のスイッチで、動かせます。電池の減りが、少し早くなることがあります）。")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let reason { Label(reason, systemImage: "info.circle").font(.callout).padding(.top, 4) }
                 }
             }
             .padding(20)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        }
+        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
+            reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
     }
 

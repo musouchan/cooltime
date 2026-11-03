@@ -9,7 +9,7 @@ import CooltimeCore
 /// 電池への配慮:
 ///  - 画面の書き換えは 1 秒に 8 コマまで。コマごとの画像は使い回す。
 ///  - 画面がスリープ／メニューバーが隠れているときは、タイマーごと止める。
-///  - 「低電力モード」では、まばたきだけ（それ以外は静止）。
+///  - 「低電力モード」では、まばたきだけ（それ以外は静止）。管理画面で、低電力モードでも動かすことを選べる。
 ///  - 「視差効果を減らす」では、静止。
 ///  - 管理画面の設定: 動く／ときどきだけ／止める。
 @MainActor
@@ -83,12 +83,25 @@ final class StatusItemController: NSObject {
         display = model.menuBarDisplay
         let text = display.text(now: model.now)
 
-        if text != lastTitle {
-            lastTitle = text
+        // 数字と、その数字のもとのサービス（アイコン）が変わったときだけ、タイトルを作り直す
+        let service = display.source.flatMap { Catalog.service($0) }
+        let titleKey = "\(text ?? "")|\(service?.id ?? "")"
+        if titleKey != lastTitle {
+            lastTitle = titleKey
             if let text {
-                button.attributedTitle = NSAttributedString(string: " " + text, attributes: [
+                let title = NSMutableAttributedString(string: " ")
+                if let service {
+                    // サービスのアプリのアイコン（色つき）を、数字の前に添える
+                    let attachment = NSTextAttachment()
+                    attachment.image = ServiceIconImage.image(for: service, points: 14)
+                    attachment.bounds = CGRect(x: 0, y: -3, width: 14, height: 14)
+                    title.append(NSAttributedString(attachment: attachment))
+                    title.append(NSAttributedString(string: " "))
+                }
+                title.append(NSAttributedString(string: text, attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-                ])
+                ]))
+                button.attributedTitle = title
                 button.imagePosition = .imageLeading
             } else {
                 button.attributedTitle = NSAttributedString(string: "")
@@ -96,7 +109,7 @@ final class StatusItemController: NSObject {
             }
         }
         button.toolTip = model.menuBarTooltip
-        button.setAccessibilityLabel("Cooltime: " + (text ?? "取得できていません"))
+        button.setAccessibilityLabel("Cooltime: " + (service.map { "\($0.name) " } ?? "") + (text ?? "取得できていません"))
         updateImage(force: true)
         updateTimer()
     }
@@ -108,7 +121,9 @@ final class StatusItemController: NSObject {
         switch CharacterPrefs.motion {
         case .still: return .still
         case .sometimes: return blinkOnly
-        case .full: return ProcessInfo.processInfo.isLowPowerModeEnabled ? blinkOnly : .full
+        case .full:
+            let saving = ProcessInfo.processInfo.isLowPowerModeEnabled && !CharacterPrefs.motionInLowPower
+            return saving ? blinkOnly : .full
         }
     }
 

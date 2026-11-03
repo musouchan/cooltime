@@ -30,6 +30,16 @@ public struct LimitEvent: Codable, Equatable, Sendable {
     public var until: Date
 }
 
+/// 1時間ごとの「使った量」。週（または月）の枠の使用%が、その1時間に何ポイント増えたか。
+/// 増えたことに気づいた時刻（取得した時刻）で、集計する。
+public struct UsageBucket: Codable, Equatable, Sendable {
+    public var account: UUID
+    public var serviceID: String
+    /// その時間の始まり（UNIX 時刻の、1時間ごとの区切り）。
+    public var hour: Date
+    public var points: Double
+}
+
 /// 使用状況の記録。Mac の中だけに保存する。会話の中身は持たない（枠の%と時刻だけ）。
 public struct UsageHistory: Codable, Equatable, Sendable {
     public var startedAt: Date
@@ -37,9 +47,39 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     public var limits: [LimitEvent] = []
     /// まだ終わっていない期間（アカウントと枠ごと）。
     public var open: [String: WindowPeriod] = [:]
+    /// 時間ごとの使用量（棒グラフ用）。
+    public var buckets: [UsageBucket] = []
 
     public init(startedAt: Date) {
         self.startedAt = startedAt
+    }
+
+    private enum CodingKeys: String, CodingKey { case startedAt, periods, limits, open, buckets }
+
+    /// 古い記録（buckets が無いもの）も、そのまま読めるようにする。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        periods = try c.decodeIfPresent([WindowPeriod].self, forKey: .periods) ?? []
+        limits = try c.decodeIfPresent([LimitEvent].self, forKey: .limits) ?? []
+        open = try c.decodeIfPresent([String: WindowPeriod].self, forKey: .open) ?? [:]
+        buckets = try c.decodeIfPresent([UsageBucket].self, forKey: .buckets) ?? []
+    }
+
+    /// 時間あたりの使用量を数える枠。5時間枠のように短く戻る枠は、数えない
+    /// （週や月の枠に対する%で、サービスをまたいで比べられるようにするため）。
+    public static func isBudgetWindow(_ label: String) -> Bool {
+        !label.contains("時間") && !label.contains("分")
+    }
+
+    mutating func addBucket(account: UUID, serviceID: String, at time: Date, points: Double) {
+        guard points > 0 else { return }
+        let hour = Date(timeIntervalSince1970: (time.timeIntervalSince1970 / 3600).rounded(.down) * 3600)
+        if let i = buckets.firstIndex(where: { $0.account == account && $0.serviceID == serviceID && $0.hour == hour }) {
+            buckets[i].points += points
+        } else {
+            buckets.append(UsageBucket(account: account, serviceID: serviceID, hour: hour, points: points))
+        }
     }
 
     /// 戻り時刻の、取得元ごとの小さな揺れ（/usage は分単位など）は、同じ期間とみなす。
@@ -53,7 +93,14 @@ public struct UsageHistory: Codable, Equatable, Sendable {
             guard let reset = w.resetsAt, let used = w.usedPercent else { continue }
             let key = "\(account.uuidString)|\(w.label)"
             if var cur = open[key], abs(cur.resetsAt.timeIntervalSince(reset)) <= Self.jitter {
-                if used > cur.peakUsed { cur.peakUsed = used; changed = true }
+                if used > cur.peakUsed {
+                    // 増えた分を、増えたことに気づいた時刻に足す（最初に見た値は、いつ使ったか分からないので足さない）。
+                    if Self.isBudgetWindow(w.label) {
+                        addBucket(account: account, serviceID: serviceID, at: snapshot.fetchedAt, points: used - cur.peakUsed)
+                    }
+                    cur.peakUsed = used
+                    changed = true
+                }
                 cur.lastSeen = max(cur.lastSeen, snapshot.fetchedAt)
                 if w.isExhausted && !cur.hitLimit {
                     cur.hitLimit = true
@@ -82,7 +129,9 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     }
 
     /// 戻り時刻を過ぎた期間を締める（使われなくなった枠を、いつまでも開けておかない）。
+    /// 古い時間ごとの記録（120日より前）は、捨てる。
     public mutating func closeFinished(now: Date) {
+        buckets.removeAll { $0.hour < now.addingTimeInterval(-120 * 86400) }
         for (key, p) in open where p.resetsAt < now.addingTimeInterval(-Self.jitter) {
             periods.append(p)
             open.removeValue(forKey: key)
@@ -93,6 +142,7 @@ public struct UsageHistory: Codable, Equatable, Sendable {
     public mutating func forget(account: UUID) {
         periods.removeAll { $0.account == account }
         limits.removeAll { $0.account == account }
+        buckets.removeAll { $0.account == account }
         open = open.filter { $0.value.account != account }
     }
 }
@@ -218,5 +268,58 @@ extension UsageHistory {
             }
         }
         return out
+    }
+}
+
+// MARK: - 棒グラフ用の集計
+
+public struct UsageBar: Identifiable, Equatable, Sendable {
+    public var start: Date
+    public var account: UUID
+    public var serviceID: String
+    public var points: Double
+    public var id: String { "\(account)|\(start.timeIntervalSince1970)" }
+}
+
+public struct LimitMark: Identifiable, Equatable, Sendable {
+    public var start: Date
+    public var until: Date
+    public var account: UUID
+    public var serviceID: String
+    public var label: String
+    public var id: String { "\(account)|\(label)|\(start.timeIntervalSince1970)" }
+}
+
+extension UsageHistory {
+    /// 日の表示は1時間ごと、週・月の表示は1日ごとに集める。アカウントごとに分ける。
+    public func usageBars(span: ReviewSpan, from: Date, to: Date, calendar: Calendar = .current) -> [UsageBar] {
+        var sums: [String: UsageBar] = [:]
+        for b in buckets where b.hour >= from && b.hour < to {
+            let start = span == .day ? b.hour : calendar.startOfDay(for: b.hour)
+            let key = "\(b.account)|\(start.timeIntervalSince1970)"
+            if var cur = sums[key] {
+                cur.points += b.points
+                sums[key] = cur
+            } else {
+                sums[key] = UsageBar(start: start, account: b.account, serviceID: b.serviceID, points: b.points)
+            }
+        }
+        return sums.values.sorted { ($0.start, $0.account.uuidString) < ($1.start, $1.account.uuidString) }
+    }
+
+    /// 制限に当たった時刻（範囲の中）。
+    public func limitMarks(from: Date, to: Date) -> [LimitMark] {
+        limits.filter { $0.start >= from && $0.start < to }
+            .map { LimitMark(start: $0.start, until: $0.until, account: $0.account, serviceID: $0.serviceID, label: $0.label) }
+            .sorted { $0.start < $1.start }
+    }
+
+    /// 時間帯（0〜23時）ごとの使用量の合計。範囲の中の、何時によく使うか。
+    public func hourOfDayTotals(from: Date, to: Date, calendar: Calendar = .current) -> [Double] {
+        var totals = [Double](repeating: 0, count: 24)
+        for b in buckets where b.hour >= from && b.hour < to {
+            totals[calendar.component(.hour, from: b.hour)] += b.points
+        }
+        return totals
     }
 }
