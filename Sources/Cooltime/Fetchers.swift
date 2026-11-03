@@ -9,6 +9,7 @@ enum FetchError: LocalizedError {
     case codexNoResponse
     case noFile
     case claudeNotFound
+    case claudeFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,7 @@ enum FetchError: LocalizedError {
         case .codexNoResponse: return "Codex から応答がありませんでした（ログイン済みか確認）"
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
         case .claudeNotFound: return "Claude Code（ターミナル版）が見つかりません"
+        case .claudeFailed(let d): return "/usage を取得できませんでした（\(d)）"
         }
     }
 }
@@ -39,6 +41,8 @@ enum Paths {
 struct FetchResult {
     var snapshot: Snapshot
     var identity: AccountIdentity?
+    /// 取れたが問題があるとき（例: /usage が失敗して、古い記録を使った）。画面に出す。
+    var warning: String?
 }
 
 enum Fetchers {
@@ -69,7 +73,10 @@ enum Fetchers {
                     let text = try await Task.detached { try ClaudeCLI.usage() }.value
                     return FetchResult(snapshot: try ClaudeUsageText.parse(text, now: now), identity: claudeIdentity())
                 } catch {
-                    if let s = try? readClaude(slot: account.slot) { return FetchResult(snapshot: s, identity: claudeIdentity()) }
+                    // 失敗を隠さない。古い記録があれば表示は続けるが、理由を画面に出す。
+                    if let s = try? readClaude(slot: account.slot) {
+                        return FetchResult(snapshot: s, identity: claudeIdentity(), warning: error.localizedDescription)
+                    }
                     throw error
                 }
             }
@@ -202,53 +209,74 @@ enum Codex {
 enum ClaudeCLI {
     static func executable() -> URL? {
         let fm = FileManager.default
+        return binDirs().map { "\($0)/claude" }.first { fm.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+
+    /// GUI アプリは、ターミナルの PATH を引き継がない。よくある置き場所を、自分で並べる。
+    static func binDirs() -> [String] {
+        let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path
-        let candidates = [
-            "\(home)/.local/bin/claude",
-            "\(home)/bin/claude",
-            "\(home)/.claude/local/claude",
-            "/opt/homebrew/bin/claude",
-            "/usr/local/bin/claude",
-            "\(home)/.npm-global/bin/claude",
-            "\(home)/.bun/bin/claude",
-        ]
-        return candidates.first { fm.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+        var dirs = ["\(home)/.local/bin", "\(home)/bin", "\(home)/.claude/local", "/opt/homebrew/bin",
+                    "/usr/local/bin", "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin"]
+        // nvm / fnm の Node（claude が node のスクリプトのとき、node も PATH に要る）
+        for base in ["\(home)/.nvm/versions/node", "\(home)/.local/share/fnm/node-versions"] {
+            for v in ((try? fm.contentsOfDirectory(atPath: base)) ?? []).sorted().reversed() {
+                dirs.append(base.hasSuffix("node") ? "\(base)/\(v)/bin" : "\(base)/\(v)/installation/bin")
+            }
+        }
+        return dirs
     }
 
     static func usage() throws -> String {
         // セッションを履歴に残さないオプションを優先する。使えない版なら、付けずに実行する。
-        if let text = try? run(["-p", "/usage", "--no-session-persistence"]), text.contains("%") { return text }
-        return try run(["-p", "/usage"])
+        let first = try run(["-p", "/usage", "--no-session-persistence"])
+        if first.text.contains("%") { return first.text }
+        let second = try run(["-p", "/usage"])
+        if second.text.contains("%") { return second.text }
+        throw FetchError.claudeFailed(detail(second, fallback: first))
     }
 
-    private static func run(_ args: [String]) throws -> String {
+    private static func detail(_ r: (text: String, err: String, status: Int32), fallback f: (text: String, err: String, status: Int32)) -> String {
+        let msg = [r.err, r.text, f.err, f.text].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        let body = msg.map { String($0.prefix(120)).replacingOccurrences(of: "\n", with: " ") } ?? "出力なし"
+        return "終了コード \(r.status): \(body)"
+    }
+
+    private static func run(_ args: [String]) throws -> (text: String, err: String, status: Int32) {
         let p = Process()
         let exe = executable()
         if let exe {
             p.executableURL = exe
             p.arguments = args
         } else {
+            // 見つからないときは、ログインシェル（.zshrc も読む）経由で探す。
             p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            p.arguments = ["-l", "-c", "exec claude " + args.map { "'\($0)'" }.joined(separator: " ")]
+            p.arguments = ["-i", "-l", "-c", "exec claude " + args.map { "'\($0)'" }.joined(separator: " ")]
         }
         var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (binDirs() + (env["PATH"] ?? "/usr/bin:/bin").split(separator: ":").map(String.init)).joined(separator: ":")
         // 自分の確認で、合図のフックが動かないようにする目印。
         env["COOLTIME_USAGE_PROBE"] = "1"
         p.environment = env
         p.currentDirectoryURL = Paths.dir
-        let out = Pipe()
+        let out = Pipe(), err = Pipe()
         p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
+        p.standardError = err
         p.standardInput = FileHandle.nullDevice
         do { try p.run() } catch { throw FetchError.claudeNotFound }
 
         let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: killer)
         defer { killer.cancel() }
+        // 標準エラーは別スレッドで読む（どちらかが詰まって止まらないように）。
+        var errData = Data()
+        let errDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); errDone.signal() }
         let data = out.fileHandleForReading.readDataToEndOfFile()
+        errDone.wait()
         p.waitUntilExit()
-        let text = String(decoding: data, as: UTF8.self)
-        if text.isEmpty && exe == nil { throw FetchError.claudeNotFound }
-        return text
+        let r = (String(decoding: data, as: UTF8.self), String(decoding: errData, as: UTF8.self), p.terminationStatus)
+        if exe == nil && r.0.isEmpty && p.terminationStatus == 127 { throw FetchError.claudeNotFound }
+        return r
     }
 }

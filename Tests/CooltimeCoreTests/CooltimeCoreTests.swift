@@ -307,3 +307,35 @@ final class StopHookConfigTests: XCTestCase {
         XCTAssertTrue(obj(empty).isEmpty)
     }
 }
+
+final class OutdatedDataTests: XCTestCase {
+    let clock = FixedClock(Date(timeIntervalSince1970: 1_800_000_000))
+
+    /// 取得した後に戻り時刻を過ぎた枠は、「使用可能」とは言わず、再確認を促す。
+    func testAvailableWindowPastResetBecomesStale() {
+        let reset = clock.now.addingTimeInterval(600)
+        let s = Snapshot(windows: [UsageWindow(label: "5時間枠", usedPercent: 12, resetsAt: reset)], fetchedAt: clock.now)
+        XCTAssertEqual(evaluate(s, now: clock.now), .available)
+        clock.advance(by: 601)
+        XCTAssertEqual(evaluate(s, now: clock.now), .stale(since: reset))
+    }
+
+    /// 戻り時刻を過ぎたあとに取得したデータなら、そのまま信用する。
+    func testFreshDataAfterResetIsAvailable() {
+        let reset = clock.now.addingTimeInterval(-600)
+        let s = Snapshot(windows: [UsageWindow(label: "5時間枠", usedPercent: 12, resetsAt: reset)], fetchedAt: clock.now)
+        XCTAssertEqual(evaluate(s, now: clock.now), .available)
+    }
+}
+
+final class AppVersionTests: XCTestCase {
+    func testIsNewer() {
+        XCTAssertTrue(AppVersion.isNewer("v0.4.0", than: "0.3.0"))
+        XCTAssertTrue(AppVersion.isNewer("0.10.0", than: "0.9.5"))
+        XCTAssertTrue(AppVersion.isNewer("v1.0", than: "0.9.9"))
+        XCTAssertFalse(AppVersion.isNewer("v0.3.0", than: "0.3.0"))
+        XCTAssertFalse(AppVersion.isNewer("v0.2.9", than: "0.3.0"))
+        XCTAssertFalse(AppVersion.isNewer("nightly", than: "0.3.0"))
+        XCTAssertTrue(AppVersion.isNewer("v0.0.1", than: "0.0.0"))
+    }
+}

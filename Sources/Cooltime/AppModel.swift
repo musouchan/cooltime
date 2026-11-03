@@ -136,9 +136,12 @@ final class AppModel: ObservableObject {
         defer { refreshing.remove(account.id) }
         do {
             let result = try await Fetchers.fetch(account: account, service: service)
-            snapshots[account.id] = result.snapshot
+            // 古い記録で、新しいデータを上書きしない。
+            if result.snapshot.fetchedAt >= (snapshots[account.id]?.fetchedAt ?? .distantPast) {
+                snapshots[account.id] = result.snapshot
+            }
             apply(result.identity, to: account.id)
-            errors[account.id] = nil
+            errors[account.id] = result.warning
             save()
         } catch {
             errors[account.id] = error.localizedDescription

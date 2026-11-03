@@ -4,6 +4,7 @@ import CooltimeCore
 
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var updater: Updater
     @State private var adding = false
 
     var body: some View {
@@ -31,6 +32,7 @@ struct ManageView: View {
                     Text(versionText).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(8)
+                if updater.canUpdate { updateBar }
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
@@ -42,6 +44,29 @@ struct ManageView: View {
             }
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
+    }
+
+    /// 更新の確認も、入れ替えも、ボタンを押したときだけ。
+    private var updateBar: some View {
+        HStack {
+            switch updater.state {
+            case .idle, .upToDate, .failed:
+                Button("更新を確認") { Task { await updater.check() } }
+                switch updater.state {
+                case .upToDate: Text("最新です").font(.caption2).foregroundStyle(.secondary)
+                case .failed(let m): Text(m).font(.caption2).foregroundStyle(.red).lineLimit(2)
+                default: EmptyView()
+                }
+            case .checking:
+                Text("確認中…").font(.caption2).foregroundStyle(.secondary)
+            case .available(let v):
+                Button("\(v) に更新して再起動") { Task { await updater.install() } }
+            case .installing:
+                Text("入れ替え中…").font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8).padding(.bottom, 8)
     }
 
     /// 「Cooltime 0.1.0 (abc1234)」。タグのビルドは版、ほかは短いコミット ID が付く。
