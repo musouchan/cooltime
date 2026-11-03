@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import CooltimeCore
 
 /// 振り返り: 日・週・月ごとに、制限に当たった回数、待たされた時間、週の枠の使い切り率を見る。
@@ -7,6 +8,9 @@ struct ReviewView: View {
     @EnvironmentObject var model: AppModel
     @State private var span: ReviewSpan = .week
     @State private var anchor = Date()
+    @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
+
+    private var ghost: Bool { displayStyle == DisplayStyle.ghost.rawValue }
 
     var body: some View {
         let (from, to) = UsageHistory.range(span, containing: anchor)
@@ -86,6 +90,66 @@ struct ReviewView: View {
         .frame(minWidth: 640, minHeight: 480)
     }
 
+    // MARK: シンプルな棒グラフ
+
+    private var xStride: (Calendar.Component, Int) {
+        switch span {
+        case .day: return (.hour, 3)
+        case .week: return (.day, 1)
+        case .month: return (.day, 5)
+        }
+    }
+
+    private var xFormat: Date.FormatStyle {
+        switch span {
+        case .day: return .dateTime.hour()
+        case .week: return .dateTime.weekday(.abbreviated)
+        case .month: return .dateTime.day()
+        }
+    }
+
+    private func simpleChart(from: Date, to: Date, bars: [UsageBar], marks: [LimitMark]) -> some View {
+        Chart {
+            ForEach(bars) { b in
+                BarMark(x: .value("日時", b.start, unit: span == .day ? .hour : .day), y: .value("使った量", b.points))
+                    .foregroundStyle(by: .value("サービス", model.displayName(b.account)))
+            }
+            ForEach(marks) { m in
+                RuleMark(x: .value("上限", m.start))
+                    .foregroundStyle(.red)
+                    .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                    .annotation(position: .top, alignment: .center, spacing: 2) {
+                        Label("上限", systemImage: "pause.circle.fill").font(.caption2).foregroundStyle(.red)
+                    }
+            }
+        }
+        .chartXScale(domain: from...to)
+        .chartXAxis {
+            AxisMarks(values: .stride(by: xStride.0, count: xStride.1)) { _ in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel(format: xFormat)
+            }
+        }
+        .chartYAxisLabel("週（月）の枠を使った量（%）")
+        .frame(height: 210)
+    }
+
+    private func simpleHourChart(totals: [Double]) -> some View {
+        Chart {
+            ForEach(0..<24, id: \.self) { h in
+                BarMark(x: .value("時", h), y: .value("使った量", totals[h]))
+            }
+        }
+        .chartXAxis {
+            AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in
+                AxisGridLine()
+                AxisValueLabel { if let h = value.as(Int.self) { Text("\(h)時") } }
+            }
+        }
+        .frame(height: 110)
+    }
+
     // MARK: おばけ積み
 
     /// 1匹が何%分か。積み上がる数が、10匹までに収まるように決める。
@@ -135,10 +199,14 @@ struct ReviewView: View {
             if bars.isEmpty && marks.isEmpty {
                 Text("この期間は、使った記録がありません。").foregroundStyle(.secondary)
             } else {
-                GhostStackChart(columns: cols, unit: unit, dayView: span == .day)
-                    .frame(height: 230)
-                Label("おばけ1匹 ＝ 週（月）の枠の \(Int(unit))% 分。眠っている赤いおばけは、上限に当たった日", systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.secondary)
+                if ghost {
+                    GhostStackChart(columns: cols, unit: unit, dayView: span == .day)
+                        .frame(height: 230)
+                    Label("おばけ1匹 ＝ 週（月）の枠の \(Int(unit))% 分。眠っている赤いおばけは、上限に当たった日", systemImage: "info.circle")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    simpleChart(from: from, to: to, bars: bars, marks: marks)
+                }
 
                 if !marks.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
@@ -153,7 +221,11 @@ struct ReviewView: View {
 
             if span != .day, totals.contains(where: { $0 > 0 }) {
                 Text("何時によく使うか（0〜23時の合計。大きいほど、よく使う）").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
-                GhostSizeRow(values: totals).frame(height: 96)
+                if ghost {
+                    GhostSizeRow(values: totals).frame(height: 96)
+                } else {
+                    simpleHourChart(totals: totals)
+                }
             }
 
             if let peak = peakHour(span: span, bars: bars, totals: totals) {
@@ -194,8 +266,9 @@ struct ReviewView: View {
     }
 
     private func price(_ account: UUID) -> String {
-        guard let p = model.accounts.first(where: { $0.id == account })?.monthlyPrice else { return "—" }
-        return "¥\(p.formatted())"
+        guard let a = model.accounts.first(where: { $0.id == account }) else { return "—" }
+        if let p = a.monthlyPrice { return "¥\(p.formatted())" }
+        return PlanCatalog.option(serviceID: a.serviceID, id: a.planID).map { "$\($0.usdMonthly)" } ?? "—"
     }
 
     private func icon(_ kind: Suggestion.Kind) -> String {

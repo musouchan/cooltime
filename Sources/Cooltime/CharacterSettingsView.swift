@@ -9,6 +9,7 @@ struct CharacterSettingsView: View {
     @AppStorage(CharacterPrefs.motionKey) private var motion = MotionSetting.full.rawValue
     @AppStorage(CharacterPrefs.lowPowerKey) private var inLowPower = false
     @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
+    @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -35,6 +36,16 @@ struct CharacterSettingsView: View {
                     let sample = Date().addingTimeInterval(4 * 3600 + 12 * 60)
                     Text("例: 残り87% · \((ResetTimeStyle(rawValue: timeStyle) ?? .absolute).text(for: sample, now: Date()))")
                         .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("グラフの見た目").font(.title3).fontWeight(.semibold)
+                    Picker("グラフの見た目", selection: $displayStyle) {
+                        ForEach(DisplayStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
+                    Text("残りの棒と、振り返りのグラフが変わります。メニューバーは、いつもシンプルです。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Divider()
