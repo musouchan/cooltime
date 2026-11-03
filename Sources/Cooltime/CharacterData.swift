@@ -135,19 +135,19 @@ enum CharacterData {
 
     /// "id-state" → グループ名 → 回転・拡大の原点 [x, y]
     static let origins: [String: [String: [Double]]] = [
-        "bunny-ok": ["root": [50, 99.335]],
+        "bunny-ok": ["eyes": [50, 60], "look": [50, 60], "root": [50, 99.335]],
         "bunny-limit": ["root": [50, 99.335], "zz": [78, 13]],
         "bunny-fail": ["root": [50, 99.335]],
-        "cat-ok": ["root": [50, 99.335]],
+        "cat-ok": ["eyes": [50, 60], "look": [50, 60], "root": [50, 99.335]],
         "cat-limit": ["root": [50, 99.335], "zz": [78, 13]],
         "cat-fail": ["root": [50, 99.335]],
-        "bear-ok": ["root": [50, 99.335]],
+        "bear-ok": ["eyes": [50, 55], "look": [50, 55], "root": [50, 99.335]],
         "bear-limit": ["root": [50, 99.335], "zz": [78, 13]],
         "bear-fail": ["root": [50, 99.335]],
-        "pig-ok": ["root": [50, 99.335]],
+        "pig-ok": ["eyes": [50, 52], "look": [50, 52], "root": [50, 99.335]],
         "pig-limit": ["root": [50, 99.335], "zz": [78, 13]],
         "pig-fail": ["root": [44, 99.335]],
-        "frog-ok": ["eyes": [51, 26], "look": [51, 26], "root": [50, 99.335]],
+        "frog-ok": ["eyes": [50, 26], "look": [50, 26], "root": [50, 99.335]],
         "frog-limit": ["root": [50, 99.335], "zz": [90, 10]],
         "frog-fail": ["root": [50, 99.335]],
     ]

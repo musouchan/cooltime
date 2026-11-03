@@ -236,9 +236,11 @@ def read_svg(path):
                 "path": shape.text(),
             }
             elements.append(el)
-            if not el["cutout"]:  # 外枠は、抜き以外の形から取る
-                for g in chain:
-                    boxes.setdefault(g, []).extend(shape.points())
+            # 外枠は、抜き（目・鼻・口）も含めて取る。見本（preview.html の transform-box: fill-box）と同じ。
+            # 抜きを除くと、目だけのグループ（look / eyes）の外枠が無くなり、原点が左上になって、
+            # まばたきで目が上へ飛んで、上から落ちてくるように見える。
+            for g in chain:
+                boxes.setdefault(g, []).extend(shape.points())
     walk(root, [])
     origins = {}
     for g, pts in boxes.items():
@@ -266,6 +268,10 @@ def main():
         for st in STATES:
             els, origins = read_svg(SRC / "menubar" / f"{cid}-{st}.svg")
             key = f"{cid}-{st}"
+            # motion.json で動かすグループは、必ず原点がないといけない（無いと、左上を基準に動いてしまう）
+            missing = set(motion["states"][st]["targets"]) - set(origins)
+            if missing:
+                raise SystemExit(f"{key}: 原点を計算できないグループ: {sorted(missing)}")
             out.append(f"        {swift_str(key)}: [")
             for e in els:
                 chain = "[" + ", ".join(swift_str(g) for g in e["chain"]) + "]"
