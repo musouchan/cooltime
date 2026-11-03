@@ -65,7 +65,17 @@ private struct RowFrame<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if glyph { StateGlyph(state: item.state).frame(width: 18) }
+            if glyph {
+                // 取得に失敗しているときは、「使用可能」の印にしない（古い数字を、正しいように見せない）。
+                Group {
+                    if item.fetchError != nil, item.snapshot != nil, item.state == .available {
+                        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+                    } else {
+                        StateGlyph(state: item.state)
+                    }
+                }
+                .frame(width: 18)
+            }
             AppIconView(service: item.service)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
@@ -118,6 +128,8 @@ private struct AvailableRow: View {
         RowFrame(item: item, subtitle: sub) {
             if item.state == .unset {
                 RefreshButton(item: item)
+            } else if item.fetchError != nil, let at = item.snapshot?.fetchedAt {
+                Text("\(formatClock(at, now: model.now)) 時点").foregroundStyle(.orange)
             } else {
                 Text(item.snapshot.flatMap(availableSummary) ?? "").foregroundStyle(.secondary)
             }

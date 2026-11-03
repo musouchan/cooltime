@@ -9,6 +9,8 @@ struct Item: Identifiable {
     let state: QuotaState
     /// 同じサービスに複数のアカウントがあるときだけ、アカウント名を出して見分ける。
     let showsAccountName: Bool
+    /// 最新の取得に失敗しているときの理由。あるときは、数字は古い。
+    let fetchError: String?
     var id: UUID { account.id }
 
     var title: String { showsAccountName && !account.name.isEmpty ? "\(service.name) · \(account.name)" : service.name }
@@ -136,7 +138,8 @@ final class AppModel: ObservableObject {
             guard let s = Catalog.service(a.serviceID) else { return nil }
             let snap = snapshots[a.id]
             let multiple = accounts.filter { $0.serviceID == a.serviceID }.count > 1
-            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple)
+            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple,
+                        fetchError: errors[a.id])
         }
     }
 

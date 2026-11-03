@@ -68,7 +68,7 @@ public enum CodexRateLimits {
     public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
         let root = try json(data)
         if let err = root["error"] as? [String: Any] {
-            throw ParseError.unsupported("Codex から応答がありませんでした（\(err["message"] as? String ?? "エラー")）")
+            throw ParseError.unsupported(codexErrorText(err["message"] as? String))
         }
         guard let result = root["result"] as? [String: Any],
               let limits = (result["rateLimits"] as? [String: Any]) else {
@@ -87,6 +87,18 @@ public enum CodexRateLimits {
         }
         guard !windows.isEmpty || credit != nil else { throw ParseError.invalid("利用枠が見つかりません") }
         return Snapshot(windows: windows, credit: credit, fetchedAt: fetchedAt)
+    }
+
+    /// Codex のエラー文（英語）を、短い日本語にする。
+    static func codexErrorText(_ message: String?) -> String {
+        let m = (message ?? "").lowercased()
+        if m.contains("error sending request") || m.contains("timed out") || m.contains("connect") || m.contains("dns") {
+            return "Codex が ChatGPT に接続できませんでした（通信を確認）"
+        }
+        if m.contains("401") || m.contains("unauthorized") || m.contains("log in") || m.contains("login") || m.contains("auth") {
+            return "ログインの期限切れの可能性があります（ChatGPT アプリで再ログイン）"
+        }
+        return "Codex から利用枠を取得できませんでした（\(String((message ?? "エラー").prefix(60)))）"
     }
 
     static func label(minutes: Double?) -> String {

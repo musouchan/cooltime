@@ -110,6 +110,7 @@ struct ManageView: View {
     }
 
     private func sidebarValue(_ item: Item) -> String {
+        if item.fetchError != nil, item.state == .available || item.state == .unset { return "取得失敗" }
         switch item.state {
         case .limited(let u): return formatRemaining(until: u, now: model.now)
         case .stale: return "目安を過ぎた"
@@ -171,7 +172,12 @@ private struct DetailView: View {
             if let c = snap.credit {
                 Text("クレジット残高 \(formatMoney(c))").font(.callout)
             }
-            Text("取得 \(formatClock(snap.fetchedAt, now: model.now))").font(.caption).foregroundStyle(.secondary)
+            if item.fetchError != nil {
+                Text("取得 \(formatClock(snap.fetchedAt, now: model.now))（最新の取得に失敗しました。数字は古いものです）")
+                    .font(.caption).foregroundStyle(.orange)
+            } else {
+                Text("取得 \(formatClock(snap.fetchedAt, now: model.now))").font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 
