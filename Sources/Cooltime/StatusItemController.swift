@@ -9,7 +9,7 @@ import CooltimeCore
 /// 電池への配慮:
 ///  - 画面の書き換えは 1 秒に 8 コマまで。コマごとの画像は使い回す。
 ///  - 画面がスリープ／メニューバーが隠れているときは、タイマーごと止める。
-///  - 「低電力モード」では、まばたきだけ（それ以外は静止）。
+///  - 「低電力モード」では、まばたきだけ（それ以外は静止）。管理画面で、低電力モードでも動かすことを選べる。
 ///  - 「視差効果を減らす」では、静止。
 ///  - 管理画面の設定: 動く／ときどきだけ／止める。
 @MainActor
@@ -108,7 +108,9 @@ final class StatusItemController: NSObject {
         switch CharacterPrefs.motion {
         case .still: return .still
         case .sometimes: return blinkOnly
-        case .full: return ProcessInfo.processInfo.isLowPowerModeEnabled ? blinkOnly : .full
+        case .full:
+            let saving = ProcessInfo.processInfo.isLowPowerModeEnabled && !CharacterPrefs.motionInLowPower
+            return saving ? blinkOnly : .full
         }
     }
 

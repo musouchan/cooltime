@@ -17,11 +17,14 @@ enum MotionSetting: String, CaseIterable, Identifiable {
 enum CharacterPrefs {
     static let characterKey = "character"
     static let motionKey = "characterMotion"
+    /// 低電力モードのときも、フルに動かす（既定はオフ。仕様は、まばたきだけ）。
+    static let lowPowerKey = "characterMotionInLowPower"
 
     static var characterID: String {
         let v = UserDefaults.standard.string(forKey: characterKey) ?? "bunny"
         return CharacterData.ids.contains(v) ? v : "bunny"
     }
+    static var motionInLowPower: Bool { UserDefaults.standard.bool(forKey: lowPowerKey) }
     static var motion: MotionSetting {
         MotionSetting(rawValue: UserDefaults.standard.string(forKey: motionKey) ?? "") ?? .full
     }
