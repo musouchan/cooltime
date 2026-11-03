@@ -1,6 +1,24 @@
 import SwiftUI
 import CooltimeCore
 
+/// シンプルな残りの棒。埋まっている長さが「残り」（満タン＝たっぷり）。
+struct RemainingBar: View {
+    let fraction: Double
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.12))
+                Capsule().fill(tint)
+                    .frame(width: fraction > 0 ? max(8, geo.size.width * min(1, fraction)) : 0)
+            }
+        }
+        .frame(height: 8)
+        .accessibilityHidden(true)
+    }
+}
+
 /// 残りの「おばけ散歩」。おばけが、残りの位置にいる（右＝たっぷり、左＝尽きた）。
 /// 表情で、状態が分かる: 目が開いている／あたふた（残り10%未満）／眠る（尽きた）。
 /// 色（青・オレンジ・赤）は補助。数字（残り○%）と「尽きた」の文字も、いつも一緒に出す。
@@ -50,6 +68,7 @@ struct WindowBarRow: View {
     let now: Date
     var dimmed = false
     @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
+    @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
 
     private var remaining: Double? { window.isExhausted ? 0 : window.remainingPercent }
 
@@ -83,7 +102,13 @@ struct WindowBarRow: View {
                 Spacer(minLength: 8)
                 Text(summary).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
-            if let r = remaining { GhostWalk(fraction: r / 100, tint: tint) }
+            if let r = remaining {
+                if displayStyle == DisplayStyle.ghost.rawValue {
+                    GhostWalk(fraction: r / 100, tint: tint)
+                } else {
+                    RemainingBar(fraction: r / 100, tint: tint).padding(.top, 4)
+                }
+            }
         }
         .opacity(dimmed ? 0.5 : 1)
         .accessibilityElement(children: .combine)

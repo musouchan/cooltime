@@ -272,11 +272,20 @@ final class AppModel: ObservableObject {
     }
 
     private func apply(_ identity: AccountIdentity?, to id: UUID) {
-        guard let identity, let i = accounts.firstIndex(where: { $0.id == id }),
-              accounts[i].name.isEmpty, let name = identity.displayName else { return }
-        accounts[i].name = name
-        if let t = identity.type { accounts[i].type = t }
-        save()
+        guard let identity, let i = accounts.firstIndex(where: { $0.id == id }) else { return }
+        var changed = false
+        if accounts[i].name.isEmpty, let name = identity.displayName {
+            accounts[i].name = name
+            if let t = identity.type { accounts[i].type = t }
+            changed = true
+        }
+        // プランは、取れたときだけ（本人が選んだものは、上書きしない）
+        if accounts[i].planID == nil,
+           let plan = PlanCatalog.match(serviceID: accounts[i].serviceID, planName: identity.plan) {
+            accounts[i].planID = plan.id
+            changed = true
+        }
+        if changed { save() }
     }
 
     // MARK: 追加・削除・保存

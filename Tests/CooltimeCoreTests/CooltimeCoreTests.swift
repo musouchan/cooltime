@@ -664,3 +664,32 @@ final class UsageBucketTests: XCTestCase {
 private extension JSONDecoder {
     static var cooltimeTest: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .secondsSince1970; return d }
 }
+
+final class PlanCatalogTests: XCTestCase {
+    func testMatchByIdOrName() {
+        XCTAssertEqual(PlanCatalog.match(serviceID: "codex", planName: "Plus")?.id, "plus")
+        XCTAssertEqual(PlanCatalog.match(serviceID: "codex", planName: "pro")?.usdMonthly, 200)
+        XCTAssertEqual(PlanCatalog.match(serviceID: "claude", planName: "Max 5x")?.id, "max5x")
+        XCTAssertEqual(PlanCatalog.match(serviceID: "claude", planName: "max20x")?.usdMonthly, 200)
+    }
+
+    func testUnknownPlanIsNotInvented() {
+        XCTAssertNil(PlanCatalog.match(serviceID: "codex", planName: "Team"))
+        XCTAssertNil(PlanCatalog.match(serviceID: "codex", planName: nil))
+        XCTAssertNil(PlanCatalog.match(serviceID: "firecrawl", planName: "Hobby"))
+        XCTAssertTrue(PlanCatalog.options(for: "elevenlabs").isEmpty)
+    }
+
+    func testPriceText() {
+        XCTAssertEqual(PlanCatalog.option(serviceID: "claude", id: "max5x")?.priceText, "月 $100")
+        XCTAssertNil(PlanCatalog.option(serviceID: "claude", id: nil))
+    }
+
+    func testOldAccountWithoutPlanStillDecodes() throws {
+        let json = #"{"id":"00000000-0000-0000-0000-000000000001","serviceID":"claude","name":"","type":"personal","paymentURL":"","slot":"default"}"#
+        let d = JSONDecoder()
+        let a = try d.decode(Account.self, from: Data(json.utf8))
+        XCTAssertNil(a.planID)
+        XCTAssertNil(a.monthlyPrice)
+    }
+}
