@@ -27,5 +27,10 @@ struct CooltimeApp: App {
             ManageView().environmentObject(model).environmentObject(updater)
         }
         .defaultSize(width: 860, height: 560)
+
+        Window("Cooltime 振り返り", id: "review") {
+            ReviewView().environmentObject(model)
+        }
+        .defaultSize(width: 760, height: 620)
     }
 }

@@ -5,6 +5,7 @@ import CooltimeCore
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: Updater
+    @Environment(\.openWindow) private var openWindow
     @State private var adding = false
     @State private var pendingDelete: Account?
 
@@ -43,6 +44,12 @@ struct ManageView: View {
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
         .toolbar {
+            ToolbarItem {
+                Button {
+                    openWindow(id: "review")
+                    NSApp.activate(ignoringOtherApps: true)
+                } label: { Label("振り返り", systemImage: "chart.bar") }
+            }
             ToolbarItem {
                 Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
                     .help("すべてのサービスを今すぐ更新します（通信します）")
@@ -259,6 +266,12 @@ private struct DetailView: View {
                 GridRow {
                     Text("名前")
                     TextField("例: Max / 会社用", text: $draft.name)
+                }
+                GridRow {
+                    Text("月額（円）")
+                    TextField("任意。振り返りで、払っている額と並べて見られます", text: Binding(
+                        get: { draft.monthlyPrice.map(String.init) ?? "" },
+                        set: { draft.monthlyPrice = Int($0.filter(\.isNumber)) }))
                 }
                 if item.service.method == .statuslineFile {
                     GridRow {

@@ -357,3 +357,95 @@ final class CodexErrorTextTests: XCTestCase {
         }
     }
 }
+
+final class UsageHistoryTests: XCTestCase {
+    let a = UUID()
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func snap(_ used: Double, reset: Date, at: Date, label: String = "5時間枠") -> Snapshot {
+        Snapshot(windows: [UsageWindow(label: label, usedPercent: used, resetsAt: reset)], fetchedAt: at)
+    }
+
+    func testPeakAndPeriodRollover() {
+        var h = UsageHistory(startedAt: t0)
+        let r1 = t0.addingTimeInterval(3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(20, reset: r1, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(55, reset: r1.addingTimeInterval(60), at: t0.addingTimeInterval(600)),
+                  now: t0.addingTimeInterval(600))
+        XCTAssertEqual(h.open.count, 1)
+        XCTAssertEqual(h.open.values.first?.peakUsed, 55)
+        // 次の期間
+        let r2 = r1.addingTimeInterval(5 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(5, reset: r2, at: r1.addingTimeInterval(60)), now: r1.addingTimeInterval(60))
+        XCTAssertEqual(h.periods.count, 1)
+        XCTAssertEqual(h.periods[0].peakUsed, 55)
+    }
+
+    func testLimitIsCountedOncePerPeriodAndWaitTimeSums() {
+        var h = UsageHistory(startedAt: t0)
+        let reset = t0.addingTimeInterval(2 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(100, reset: reset, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(100, reset: reset, at: t0.addingTimeInterval(60)), now: t0.addingTimeInterval(60))
+        XCTAssertEqual(h.limits.count, 1)
+        let s = h.summary(from: t0, to: t0.addingTimeInterval(86400), now: t0.addingTimeInterval(86400))
+        XCTAssertEqual(s.limitHits, 1)
+        XCTAssertEqual(s.waited, 2 * 3600, accuracy: 1)
+    }
+
+    /// リセットの直前まで見えていない期間は、使い残しを出さない（数字を作らない）。
+    func testUnusedNeedsObservationNearReset() {
+        let p = WindowPeriod(account: a, serviceID: "claude", label: "週の枠", resetsAt: t0.addingTimeInterval(7 * 86400),
+                             peakUsed: 30, firstSeen: t0, lastSeen: t0.addingTimeInterval(86400), hitLimit: false)
+        XCTAssertNil(p.unused)
+        var q = p
+        q.lastSeen = q.resetsAt.addingTimeInterval(-3600)
+        XCTAssertEqual(q.unused, 70)
+    }
+
+    func testPlanDownSuggestionAfterThreeLightWeeks() {
+        var h = UsageHistory(startedAt: t0)
+        for i in 0..<3 {
+            let reset = t0.addingTimeInterval(Double(i + 1) * 7 * 86400)
+            h.periods.append(WindowPeriod(account: a, serviceID: "claude", label: "週の枠", resetsAt: reset, peakUsed: 30,
+                                          firstSeen: reset.addingTimeInterval(-7 * 86400), lastSeen: reset.addingTimeInterval(-600),
+                                          hitLimit: false))
+        }
+        let s = h.suggestions(now: t0.addingTimeInterval(22 * 86400), name: { _ in "Claude" })
+        XCTAssertEqual(s.map(\.kind), [.planDown])
+        XCTAssertTrue(s[0].text.contains("平均30%"))
+    }
+
+    func testNoSuggestionsWithoutEnoughData() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, reset: t0.addingTimeInterval(3600), at: t0), now: t0)
+        XCTAssertTrue(h.suggestions(now: t0, name: { _ in "Claude" }).isEmpty)
+    }
+
+    func testUseItOrLoseIt() {
+        var h = UsageHistory(startedAt: t0)
+        let reset = t0.addingTimeInterval(10 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(35, reset: reset, at: t0, label: "週の枠"), now: t0)
+        let s = h.suggestions(now: t0, name: { _ in "Claude" })
+        XCTAssertEqual(s.map(\.kind), [.useItOrLoseIt])
+        XCTAssertTrue(s[0].text.contains("あと65%"))
+    }
+
+    func testRangeIsMondayBasedWeek() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let f = ISO8601DateFormatter()
+        let wed = f.date(from: "2026-11-04T03:00:00Z")!  // 水曜 12:00 JST
+        let (s, e) = UsageHistory.range(.week, containing: wed, calendar: cal)
+        XCTAssertEqual(f.string(from: s), "2026-11-01T15:00:00Z")  // 月曜 0:00 JST
+        XCTAssertEqual(e.timeIntervalSince(s), 7 * 86400)
+    }
+}
+
+final class DurationTests: XCTestCase {
+    func testFormatDuration() {
+        XCTAssertEqual(formatDuration(0), "0分")
+        XCTAssertEqual(formatDuration(45 * 60), "45分")
+        XCTAssertEqual(formatDuration(6 * 3600 + 12 * 60), "6時間12分")
+        XCTAssertEqual(formatDuration(30 * 3600), "30時間")
+    }
+}

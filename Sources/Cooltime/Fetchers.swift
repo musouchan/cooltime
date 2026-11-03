@@ -33,6 +33,8 @@ enum Paths {
         return d
     }
     static var state: URL { dir.appendingPathComponent("state.json") }
+    /// 使用状況の記録（枠の%と時刻だけ。会話の中身は持たない）。
+    static var history: URL { dir.appendingPathComponent("history.json") }
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
     /// Claude Code の Stop フックが更新する合図のファイル（中身は空）。
     static var claudePing: URL { dir.appendingPathComponent("claude-ping") }
