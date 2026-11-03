@@ -719,3 +719,16 @@ final class ClaudePlanTests: XCTestCase {
         XCTAssertNil(ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c"}}"#))?.plan)
     }
 }
+
+final class CompactTextTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testCompactShortensRemaining() {
+        XCTAssertEqual(MenuBarDisplay.remaining(percent: 65, source: "claude", scope: nil).text(now: now, compact: true), "65%")
+        XCTAssertEqual(MenuBarDisplay.remaining(percent: 65, source: "claude", scope: nil).text(now: now), "残り65%")
+        XCTAssertEqual(MenuBarDisplay.remaining(percent: 9, source: "claude", scope: "週").text(now: now, compact: true), "週9%")
+        XCTAssertEqual(MenuBarDisplay.remaining(percent: 9, source: "claude", scope: "週").text(now: now), "週残り9%")
+        XCTAssertEqual(MenuBarDisplay.limited(until: now.addingTimeInterval(43 * 60), source: "x").text(now: now, compact: true), "あと43分")
+        XCTAssertNil(MenuBarDisplay.failed.text(now: now, compact: true))
+    }
+}

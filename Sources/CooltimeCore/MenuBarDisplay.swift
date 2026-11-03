@@ -27,10 +27,11 @@ public enum MenuBarDisplay: Equatable, Sendable {
         }
     }
 
-    public func text(now: Date) -> String? {
+    /// `compact`: メニューバーが混んでいるとき用の、短い書き方（「残り65%」→「65%」、「週残り9%」→「週9%」）。
+    public func text(now: Date, compact: Bool = false) -> String? {
         switch self {
         case .limited(let until, _): return formatRemainingShort(until: until, now: now)
-        case .remaining(let p, _, let scope): return "\(scope ?? "")残り\(p)%"
+        case .remaining(let p, _, let scope): return compact ? "\(scope ?? "")\(p)%" : "\(scope ?? "")残り\(p)%"
         case .credit(let t, _): return t
         case .failed: return nil
         }
