@@ -16,11 +16,18 @@ public enum QuotaState: Equatable, Sendable {
 public func evaluate(_ snapshot: Snapshot?, now: Date) -> QuotaState {
     guard let snapshot else { return .unset }
     let exhausted = snapshot.windows.filter { $0.isExhausted }
-    if exhausted.isEmpty { return .available }
     let future = exhausted.compactMap { $0.resetsAt }.filter { $0 > now }
     if let until = future.max() { return .limited(until: until) }
-    let since = exhausted.compactMap { $0.resetsAt }.max() ?? snapshot.fetchedAt
-    return .stale(since: since)
+    if !exhausted.isEmpty {
+        return .stale(since: exhausted.compactMap { $0.resetsAt }.max() ?? snapshot.fetchedAt)
+    }
+    // 取得した後に戻り時刻を過ぎた枠の数字は、もう当てにならない。「戻った」とも決めず、再取得を促す。
+    let outdated = snapshot.windows.compactMap { w -> Date? in
+        guard let r = w.resetsAt, r <= now, snapshot.fetchedAt < r else { return nil }
+        return r
+    }
+    if let since = outdated.max() { return .stale(since: since) }
+    return .available
 }
 
 /// 「使用可能」に出す残りの目安。数があれば数、無ければ割合。

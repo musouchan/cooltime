@@ -8,6 +8,8 @@ enum FetchError: LocalizedError {
     case codexNotFound
     case codexNoResponse
     case noFile
+    case claudeNotFound
+    case claudeFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +19,8 @@ enum FetchError: LocalizedError {
         case .codexNotFound: return "Codex が見つかりません（ChatGPT アプリか Codex CLI が必要）"
         case .codexNoResponse: return "Codex から応答がありませんでした（ログイン済みか確認）"
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
+        case .claudeNotFound: return "Claude Code（ターミナル版）が見つかりません"
+        case .claudeFailed(let d): return "/usage を取得できませんでした（\(d)）"
         }
     }
 }
@@ -30,11 +34,15 @@ enum Paths {
     }
     static var state: URL { dir.appendingPathComponent("state.json") }
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
+    /// Claude Code の Stop フックが更新する合図のファイル（中身は空）。
+    static var claudePing: URL { dir.appendingPathComponent("claude-ping") }
 }
 
 struct FetchResult {
     var snapshot: Snapshot
     var identity: AccountIdentity?
+    /// 取れたが問題があるとき（例: /usage が失敗して、古い記録を使った）。画面に出す。
+    var warning: String?
 }
 
 enum Fetchers {
@@ -58,6 +66,20 @@ enum Fetchers {
         let now = Date()
         switch service.method {
         case .statuslineFile:
+            // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
+            // 取れなければ、ステータスラインの記録に戻る。
+            if account.slot == "default" {
+                do {
+                    let text = try await Task.detached { try ClaudeCLI.usage() }.value
+                    return FetchResult(snapshot: try ClaudeUsageText.parse(text, now: now), identity: claudeIdentity())
+                } catch {
+                    // 失敗を隠さない。古い記録があれば表示は続けるが、理由を画面に出す。
+                    if let s = try? readClaude(slot: account.slot) {
+                        return FetchResult(snapshot: s, identity: claudeIdentity(), warning: error.localizedDescription)
+                    }
+                    throw error
+                }
+            }
             return FetchResult(snapshot: try readClaude(slot: account.slot), identity: claudeIdentity())
         case .codexAppServer:
             let (limits, acct) = try await Task.detached { try Codex.query() }.value
@@ -179,5 +201,82 @@ enum Codex {
         }
         if let l = got[2] { return (l, got[3]) }
         throw exe == nil ? FetchError.codexNotFound : FetchError.codexNoResponse
+    }
+}
+
+/// 公式の Claude Code（改変なし）に `claude -p "/usage"` を実行させ、その表示を受け取る。
+/// Cooltime は Claude のログイン情報に触れない。問い合わせるのは Claude Code 自身。
+enum ClaudeCLI {
+    static func executable() -> URL? {
+        let fm = FileManager.default
+        return binDirs().map { "\($0)/claude" }.first { fm.isExecutableFile(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+    }
+
+    /// GUI アプリは、ターミナルの PATH を引き継がない。よくある置き場所を、自分で並べる。
+    static func binDirs() -> [String] {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser.path
+        var dirs = ["\(home)/.local/bin", "\(home)/bin", "\(home)/.claude/local", "/opt/homebrew/bin",
+                    "/usr/local/bin", "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin"]
+        // nvm / fnm の Node（claude が node のスクリプトのとき、node も PATH に要る）
+        for base in ["\(home)/.nvm/versions/node", "\(home)/.local/share/fnm/node-versions"] {
+            for v in ((try? fm.contentsOfDirectory(atPath: base)) ?? []).sorted().reversed() {
+                dirs.append(base.hasSuffix("node") ? "\(base)/\(v)/bin" : "\(base)/\(v)/installation/bin")
+            }
+        }
+        return dirs
+    }
+
+    static func usage() throws -> String {
+        // セッションを履歴に残さないオプションを優先する。使えない版なら、付けずに実行する。
+        let first = try run(["-p", "/usage", "--no-session-persistence"])
+        if first.text.contains("%") { return first.text }
+        let second = try run(["-p", "/usage"])
+        if second.text.contains("%") { return second.text }
+        throw FetchError.claudeFailed(detail(second, fallback: first))
+    }
+
+    private static func detail(_ r: (text: String, err: String, status: Int32), fallback f: (text: String, err: String, status: Int32)) -> String {
+        let msg = [r.err, r.text, f.err, f.text].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+        let body = msg.map { String($0.prefix(120)).replacingOccurrences(of: "\n", with: " ") } ?? "出力なし"
+        return "終了コード \(r.status): \(body)"
+    }
+
+    private static func run(_ args: [String]) throws -> (text: String, err: String, status: Int32) {
+        let p = Process()
+        let exe = executable()
+        if let exe {
+            p.executableURL = exe
+            p.arguments = args
+        } else {
+            // 見つからないときは、ログインシェル（.zshrc も読む）経由で探す。
+            p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            p.arguments = ["-i", "-l", "-c", "exec claude " + args.map { "'\($0)'" }.joined(separator: " ")]
+        }
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = (binDirs() + (env["PATH"] ?? "/usr/bin:/bin").split(separator: ":").map(String.init)).joined(separator: ":")
+        // 自分の確認で、合図のフックが動かないようにする目印。
+        env["COOLTIME_USAGE_PROBE"] = "1"
+        p.environment = env
+        p.currentDirectoryURL = Paths.dir
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        p.standardInput = FileHandle.nullDevice
+        do { try p.run() } catch { throw FetchError.claudeNotFound }
+
+        let killer = DispatchWorkItem { if p.isRunning { p.terminate() } }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: killer)
+        defer { killer.cancel() }
+        // 標準エラーは別スレッドで読む（どちらかが詰まって止まらないように）。
+        var errData = Data()
+        let errDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); errDone.signal() }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        errDone.wait()
+        p.waitUntilExit()
+        let r = (String(decoding: data, as: UTF8.self), String(decoding: errData, as: UTF8.self), p.terminationStatus)
+        if exe == nil && r.0.isEmpty && p.terminationStatus == 127 { throw FetchError.claudeNotFound }
+        return r
     }
 }

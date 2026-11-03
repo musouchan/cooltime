@@ -26,8 +26,8 @@ struct PopoverView: View {
             }
             Divider()
             HStack {
-                Button { Task { await model.refreshAll() } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .help("すべて更新（通信します）")
+                Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
+                    .help("すべてのサービスを更新します（通信します）")
                 Spacer()
                 Button("管理…") {
                     openWindow(id: "manage")
@@ -70,7 +70,7 @@ private struct RowFrame<Trailing: View>: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(item.title).lineLimit(1)
-                    Text(item.account.type.label).font(.caption2).foregroundStyle(.secondary)
+                    if item.isBusiness { Text("法人").font(.caption2).foregroundStyle(.secondary) }
                 }
                 Text(model.errors[item.id] ?? subtitle)
                     .font(.caption).foregroundStyle(model.errors[item.id] == nil ? Color.secondary : Color.red)
@@ -107,7 +107,6 @@ private struct StaleRow: View {
 
 private struct AvailableRow: View {
     @EnvironmentObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
     let item: Item
     var body: some View {
         let sub: String = {
@@ -118,15 +117,7 @@ private struct AvailableRow: View {
         }()
         RowFrame(item: item, subtitle: sub) {
             if item.state == .unset {
-                if item.service.method == .statuslineFile {
-                    Button("設定…") {
-                        model.selected = item.id
-                        openWindow(id: "manage")
-                        NSApp.activate(ignoringOtherApps: true)
-                    }
-                } else {
-                    RefreshButton(item: item)
-                }
+                RefreshButton(item: item)
             } else {
                 Text(item.snapshot.flatMap(availableSummary) ?? "").foregroundStyle(.secondary)
             }

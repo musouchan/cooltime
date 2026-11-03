@@ -4,7 +4,9 @@ import CooltimeCore
 
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var updater: Updater
     @State private var adding = false
+    @State private var pendingDelete: Account?
 
     var body: some View {
         NavigationSplitView {
@@ -21,16 +23,14 @@ struct ManageView: View {
                 HStack {
                     Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("サービスを追加")
                     Button {
-                        if let id = model.selected, let a = model.accounts.first(where: { $0.id == id }) {
-                            model.selected = nil
-                            model.remove(a)
-                        }
+                        pendingDelete = model.accounts.first(where: { $0.id == model.selected })
                     } label: { Image(systemName: "minus") }
                         .disabled(model.selected == nil).accessibilityLabel("削除")
                     Spacer()
                     Text(versionText).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(8)
+                if updater.canUpdate { updateBar }
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
@@ -42,6 +42,47 @@ struct ManageView: View {
             }
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
+        .toolbar {
+            ToolbarItem {
+                Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
+                    .help("すべてのサービスを今すぐ更新します（通信します）")
+            }
+        }
+        .confirmationDialog("このサービスを削除しますか？", isPresented: Binding(get: { pendingDelete != nil },
+                                                                      set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible, presenting: pendingDelete) { a in
+            Button("削除", role: .destructive) {
+                model.selected = nil
+                model.remove(a)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: { a in
+            let name = Catalog.service(a.serviceID)?.name ?? ""
+            Text("「\(name)」の設定と、取得したデータを削除します。保存したAPIキーも、Keychain から削除します。自動で見つかったものは、次の起動でも戻りません（「＋」からいつでも追加できます）。")
+        }
+    }
+
+    /// 更新の確認も、入れ替えも、ボタンを押したときだけ。
+    private var updateBar: some View {
+        HStack {
+            switch updater.state {
+            case .idle, .upToDate, .failed:
+                Button("更新を確認") { Task { await updater.check() } }
+                switch updater.state {
+                case .upToDate: Text("最新です").font(.caption2).foregroundStyle(.secondary)
+                case .failed(let m): Text(m).font(.caption2).foregroundStyle(.red).lineLimit(2)
+                default: EmptyView()
+                }
+            case .checking:
+                Text("確認中…").font(.caption2).foregroundStyle(.secondary)
+            case .available(let v):
+                Button("\(v) に更新して再起動") { Task { await updater.install() } }
+            case .installing:
+                Text("入れ替え中…").font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 8).padding(.bottom, 8)
     }
 
     /// 「Cooltime 0.1.0 (abc1234)」。タグのビルドは版、ほかは短いコミット ID が付く。
@@ -57,8 +98,10 @@ struct ManageView: View {
             AppIconView(service: item.service, size: 20)
             VStack(alignment: .leading) {
                 Text(item.service.name)
-                Text(item.account.name.isEmpty ? item.account.type.label : "\(item.account.name) \(item.account.type.label)")
-                    .font(.caption).foregroundStyle(.secondary)
+                if !item.account.name.isEmpty || item.isBusiness {
+                    Text([item.account.name, item.isBusiness ? "法人" : ""].filter { !$0.isEmpty }.joined(separator: " "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
             Spacer()
             Text(sidebarValue(item)).font(.caption).foregroundStyle(.secondary)
@@ -101,6 +144,8 @@ private struct DetailView: View {
             }
             .padding(20)
         }
+        // 自動入力されたメールアドレスなどを、古い入力欄で上書きしない。
+        .onChange(of: item.account) { _, new in draft = new }
     }
 
     private var header: some View {
@@ -111,7 +156,7 @@ private struct DetailView: View {
                 Text(item.service.hint).font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "ステータスラインから取得")
+            Text(item.service.method == .apiKey ? "公式APIから取得" : item.service.method == .codexAppServer ? "Codexから取得" : "Claude Codeから取得")
                 .font(.caption).padding(.horizontal, 8).padding(.vertical, 3)
                 .background(Capsule().fill(.quaternary))
         }
@@ -156,11 +201,7 @@ private struct DetailView: View {
         case .statuslineFile:
             StatuslineSetupView()
         case .codexAppServer:
-            HStack {
-                Button { Task { await model.refresh(item.account) } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .disabled(model.refreshing.contains(item.id))
-                Text("更新ボタンを押したときだけ、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
-            }
+            Text("1分おきに自動で、Codex に問い合わせます。").font(.caption).foregroundStyle(.secondary)
         case .apiKey:
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.service.apiKeyHelp ?? "APIキー").font(.caption).foregroundStyle(.secondary)
@@ -177,19 +218,23 @@ private struct DetailView: View {
         }
     }
 
+    @State private var editingPayment = false
+
+    private var paymentTarget: URL? { model.paymentURL(draft) }
+    private var paymentInvalid: Bool {
+        let raw = draft.paymentURL.trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty else { return false }
+        guard let u = URL(string: raw), ["http", "https"].contains(u.scheme), u.host != nil else { return true }
+        return false
+    }
+
     private var settings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("アカウントと支払い").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("アカウント").font(.caption).foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
                     Text("名前")
                     TextField("例: Max / 会社用", text: $draft.name)
-                }
-                GridRow {
-                    Text("個人／法人")
-                    Picker("", selection: $draft.type) {
-                        ForEach(AccountType.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }.pickerStyle(.segmented).labelsHidden()
                 }
                 if item.service.method == .statuslineFile {
                     GridRow {
@@ -197,16 +242,39 @@ private struct DetailView: View {
                         TextField("default", text: $draft.slot)
                     }
                 }
-                GridRow {
-                    Text("支払いページ")
-                    TextField(item.service.defaultPaymentURL, text: $draft.paymentURL)
-                }
             }
+
+            Text("支払い").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
             HStack {
-                Button("保存") { model.update(draft) }.disabled(draft == item.account)
-                Button { if let u = model.paymentURL(draft) { NSWorkspace.shared.open(u) } } label: {
+                Image(systemName: "creditcard").foregroundStyle(.secondary)
+                Text(paymentTarget?.host ?? "—").lineLimit(1)
+                if !draft.paymentURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text("変更済み").font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { editingPayment.toggle() } label: { Text(editingPayment ? "閉じる" : "変更") }
+                Button { if let u = paymentTarget { NSWorkspace.shared.open(u) } } label: {
                     Label("支払いページを開く", systemImage: "arrow.up.right.square")
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(paymentTarget == nil || paymentInvalid)
+            }
+            if editingPayment {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        TextField(item.service.defaultPaymentURL, text: $draft.paymentURL)
+                        Button("初期値に戻す") { draft.paymentURL = "" }
+                            .disabled(draft.paymentURL.isEmpty)
+                    }
+                    Text(paymentInvalid ? "https:// から始まるURLを入れてください" : "空のままなら、初期値のページを開きます。ログイン済みのブラウザで開きます。")
+                        .font(.caption).foregroundStyle(paymentInvalid ? Color.red : Color.secondary)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("保存") { model.update(draft) }
+                    .disabled(draft == item.account || paymentInvalid)
             }
         }
     }
@@ -223,12 +291,12 @@ private struct StatuslineSetupView: View {
             if isSet {
                 HStack {
                     Image(systemName: "checkmark.circle").foregroundStyle(.green)
-                    Text("設定済み。Claude Code を使うと、利用枠が表示されます。")
+                    Text("設定済み。返事が終わるたびに、すぐ更新されます。")
                     Spacer()
                     Button("元に戻す") { run { try StatuslineSetup.revert() } }
                 }
             } else {
-                Text("残りの時間を見るには、Claude Code のステータスラインに記録を足します。変更内容を確認してから設定します。元のファイルはバックアップを取ります。")
+                Text("使用量は、公式の Claude Code（/usage）で1分おきに自動で確認します。デスクトップアプリやターミナルで返事が終わるたびにすぐ更新するには、Claude Code に合図の設定を足します。変更内容を確認してから設定し、元のファイルはバックアップを取ります。")
                     .font(.callout)
                 Button("設定する…") {
                     do { change = try StatuslineSetup.preview() } catch { message = error.localizedDescription }
@@ -243,6 +311,10 @@ private struct StatuslineSetupView: View {
                 code(w.change.before)
                 Text("変更後の statusLine").font(.caption).foregroundStyle(.secondary)
                 code(w.change.after)
+                if w.change.addsHook {
+                    Text("追加するフック（返事が終わったら Cooltime に合図。通信はしません）").font(.caption).foregroundStyle(.secondary)
+                    code(StatuslineSetup.hookCommand)
+                }
                 Text("すでにステータスラインがある場合は、そのまま表示も続きます。元のファイルは settings.json.cooltime-backup-… として残ります。")
                     .font(.callout).foregroundStyle(.secondary)
                 HStack {

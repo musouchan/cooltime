@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct CooltimeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
+    @StateObject private var updater = Updater()
 
     var body: some Scene {
         MenuBarExtra {
@@ -23,7 +24,7 @@ struct CooltimeApp: App {
         .menuBarExtraStyle(.window)
 
         Window("Cooltime 管理", id: "manage") {
-            ManageView().environmentObject(model)
+            ManageView().environmentObject(model).environmentObject(updater)
         }
         .defaultSize(width: 860, height: 560)
     }

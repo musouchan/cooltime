@@ -7,9 +7,13 @@ struct Item: Identifiable {
     let service: ServiceDef
     let snapshot: Snapshot?
     let state: QuotaState
+    /// 同じサービスに複数のアカウントがあるときだけ、アカウント名を出して見分ける。
+    let showsAccountName: Bool
     var id: UUID { account.id }
 
-    var title: String { account.name.isEmpty ? service.name : "\(service.name) · \(account.name)" }
+    var title: String { showsAccountName && !account.name.isEmpty ? "\(service.name) · \(account.name)" : service.name }
+    /// 法人と分かっているときだけ、印を出す（個人は、出さない）。
+    var isBusiness: Bool { account.type == .business }
 }
 
 private struct Stored: Codable {
@@ -29,6 +33,9 @@ final class AppModel: ObservableObject {
     /// 管理画面で選ばれているアカウント。
     @Published var selected: UUID?
     private var dismissed: Set<String> = []
+    /// 自動更新を最後に行った時刻と、最後に見た合図の時刻。
+    private var lastAuto: [UUID: Date] = [:]
+    private var lastPing: Date?
 
     let clock: Clock
 
@@ -38,6 +45,8 @@ final class AppModel: ObservableObject {
         load()
         autoDetect()
         reloadFiles()
+        lastPing = pingDate()
+        autoRefresh()
         Task { [weak self] in
             // 分単位で静かに更新する。手元のファイルは自動で読み直す（通信なし）。
             while true {
@@ -50,6 +59,33 @@ final class AppModel: ObservableObject {
     func tick() {
         reloadFiles()
         now = clock.now
+        autoRefresh()
+    }
+
+    private func pingDate() -> Date? {
+        try? Paths.claudePing.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    /// 自動で更新するもの: Claude（公式の Claude Code の /usage）と、Codex（app-server）。
+    /// 1分おき。Claude Code の返事が終わった合図があれば、Claude はすぐ。
+    /// 失敗が続くものは、問い合わせすぎないよう5分おきに落とす。
+    /// APIキー系は、更新ボタンのときだけ。
+    private func autoRefresh() {
+        var pinged = false
+        if let ping = pingDate(), ping > (lastPing ?? .distantPast) {
+            lastPing = ping
+            pinged = true
+        }
+        for a in accounts {
+            guard let s = Catalog.service(a.serviceID) else { continue }
+            let auto = (s.method == .statuslineFile && a.slot == "default") || s.method == .codexAppServer
+            guard auto else { continue }
+            let interval: TimeInterval = errors[a.id] != nil ? 5 * 60 : 60
+            let due = clock.now.timeIntervalSince(lastAuto[a.id] ?? .distantPast) >= interval
+            if due || (pinged && a.serviceID == "claude") {
+                Task { await refresh(a) }
+            }
+        }
     }
 
     // MARK: 一覧
@@ -58,7 +94,8 @@ final class AppModel: ObservableObject {
         accounts.compactMap { a in
             guard let s = Catalog.service(a.serviceID) else { return nil }
             let snap = snapshots[a.id]
-            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now))
+            let multiple = accounts.filter { $0.serviceID == a.serviceID }.count > 1
+            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple)
         }
     }
 
@@ -92,9 +129,12 @@ final class AppModel: ObservableObject {
     /// 手元のファイルを読むだけのもの。
     func reloadFiles() {
         for a in accounts where Catalog.service(a.serviceID)?.method == .statuslineFile {
-            if let s = try? Fetchers.readClaude(slot: a.slot) {
-                if snapshots[a.id] != s { snapshots[a.id] = s; save() }
+            // /usage とステータスラインの、新しい方を使う。
+            if let s = try? Fetchers.readClaude(slot: a.slot),
+               s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
+                snapshots[a.id] = s
                 errors[a.id] = nil
+                save()
             }
         }
     }
@@ -102,13 +142,17 @@ final class AppModel: ObservableObject {
     /// 通信を伴う取得。更新ボタンを押したときだけ呼ぶ。
     func refresh(_ account: Account) async {
         guard let service = Catalog.service(account.serviceID), !refreshing.contains(account.id) else { return }
+        lastAuto[account.id] = clock.now
         refreshing.insert(account.id)
         defer { refreshing.remove(account.id) }
         do {
             let result = try await Fetchers.fetch(account: account, service: service)
-            snapshots[account.id] = result.snapshot
+            // 古い記録で、新しいデータを上書きしない。
+            if result.snapshot.fetchedAt >= (snapshots[account.id]?.fetchedAt ?? .distantPast) {
+                snapshots[account.id] = result.snapshot
+            }
             apply(result.identity, to: account.id)
-            errors[account.id] = nil
+            errors[account.id] = result.warning
             save()
         } catch {
             errors[account.id] = error.localizedDescription
@@ -133,9 +177,7 @@ final class AppModel: ObservableObject {
         if fm.fileExists(atPath: home.appendingPathComponent(".codex/auth.json").path) { found.append("codex") }
 
         for id in found where !dismissed.contains(id) && !accounts.contains(where: { $0.serviceID == id }) {
-            let a = add(serviceID: id)
-            // 初回だけ、Codex はアカウント情報と利用枠を1回取得する（通信）。
-            if id == "codex" { Task { await refresh(a) } }
+            add(serviceID: id)
         }
     }
 

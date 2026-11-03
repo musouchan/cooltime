@@ -8,14 +8,18 @@ enum StatuslineSetup {
     }
     /// アプリを動かしても壊れないよう、スクリプトは Application Support に置く。
     static var scriptURL: URL { Paths.dir.appendingPathComponent("cooltime-statusline.sh") }
+    /// 返事が終わったら、合図のファイルを更新するだけのフック（通信なし）。
+    /// Cooltime 自身の確認（COOLTIME_USAGE_PROBE）では動かない。
+    static let hookCommand = #"[ -n "$COOLTIME_USAGE_PROBE" ] || touch "$HOME/Library/Application Support/Cooltime/claude-ping""#
 
     static func isSet() -> Bool {
-        StatuslineConfig.isSet(try? Data(contentsOf: settingsURL), scriptPath: scriptURL.path)
+        StatuslineConfig.isSet(try? Data(contentsOf: settingsURL), scriptPath: scriptURL.path, hookCommand: hookCommand)
     }
 
     /// 変更内容（書き込みはしない）。
     static func preview() throws -> StatuslineConfig.Change {
-        try StatuslineConfig.plan(existing: try? Data(contentsOf: settingsURL), scriptPath: scriptURL.path)
+        try StatuslineConfig.plan(existing: try? Data(contentsOf: settingsURL), scriptPath: scriptURL.path,
+                                  hookCommand: hookCommand)
     }
 
     static func apply(_ change: StatuslineConfig.Change) throws {
@@ -28,7 +32,8 @@ enum StatuslineSetup {
 
     static func revert() throws {
         guard let data = try? Data(contentsOf: settingsURL),
-              let back = try StatuslineConfig.revert(existing: data, scriptPath: scriptURL.path) else { return }
+              let back = try StatuslineConfig.revert(existing: data, scriptPath: scriptURL.path,
+                                                     hookCommand: hookCommand) else { return }
         try backupSettings()
         try back.write(to: settingsURL, options: .atomic)
     }
