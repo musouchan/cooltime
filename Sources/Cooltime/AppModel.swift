@@ -35,6 +35,8 @@ final class AppModel: ObservableObject {
     private var dismissed: Set<String> = []
     /// 自動更新を最後に行った時刻と、最後に見た合図の時刻。
     private var lastAuto: [UUID: Date] = [:]
+    private var watcher: ActivityWatcher?
+    private var activityTasks: [String: Task<Void, Never>] = [:]
     private var lastPing: Date?
 
     let clock: Clock
@@ -47,6 +49,7 @@ final class AppModel: ObservableObject {
         reloadFiles()
         lastPing = pingDate()
         autoRefresh()
+        startWatching()
         Task { [weak self] in
             // 分単位で静かに更新する。手元のファイルは自動で読み直す（通信なし）。
             while true {
@@ -60,6 +63,44 @@ final class AppModel: ObservableObject {
         reloadFiles()
         now = clock.now
         autoRefresh()
+    }
+
+    /// Claude Code（ターミナルでもデスクトップの Code タブでも）と Codex は、使うと記録のファイルを更新する。
+    /// その更新を合図に、返事が終わって少し経ったら、そのサービスだけすぐ更新する。
+    private func startWatching() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        watcher = ActivityWatcher { [weak self] paths in
+            Task { @MainActor in self?.noteActivity(paths) }
+        }
+        watcher?.start(paths: ["\(home)/.claude/projects", "\(home)/.codex/sessions"])
+    }
+
+    private func noteActivity(_ paths: [String]) {
+        var services = Set<String>()
+        for p in paths where p.hasSuffix(".jsonl") {
+            if p.contains("/.claude/projects/") {
+                // 自分の確認（/usage）が残す記録では、動かさない。
+                if !p.contains("Library-Application-Support-Cooltime") { services.insert("claude") }
+            } else if p.contains("/.codex/sessions/") {
+                services.insert("codex")
+            }
+        }
+        for s in services { scheduleActivityRefresh(s) }
+    }
+
+    /// 更新が5秒止まったら（返事が終わったら）、1回だけ更新する。
+    private func scheduleActivityRefresh(_ serviceID: String) {
+        activityTasks[serviceID]?.cancel()
+        activityTasks[serviceID] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            for a in self.accounts where a.serviceID == serviceID && (serviceID != "claude" || a.slot == "default") {
+                // 失敗が続くものと、直前に更新したものは、動かさない（暴走を防ぐ）。
+                if self.errors[a.id] != nil { continue }
+                if self.clock.now.timeIntervalSince(self.lastAuto[a.id] ?? .distantPast) < 20 { continue }
+                await self.refresh(a)
+            }
+        }
     }
 
     private func pingDate() -> Date? {
