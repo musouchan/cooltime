@@ -693,3 +693,29 @@ final class PlanCatalogTests: XCTestCase {
         XCTAssertNil(a.monthlyPrice)
     }
 }
+
+final class ClaudePlanTests: XCTestCase {
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    /// 実機の値（organizationType が claude_pro、ほかは空か、ただの名前）から、Pro と分かる。
+    func testProFromOrganizationType() {
+        let id = ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c","organizationType":"claude_pro","organizationRateLimitTier":"default_claude_ai","userRateLimitTier":null,"seatTier":null}}"#))
+        XCTAssertEqual(id?.plan, "Pro")
+        XCTAssertEqual(PlanCatalog.match(serviceID: "claude", planName: id?.plan)?.id, "pro")
+    }
+
+    func testMaxNeedsTierToTellSizes() {
+        let five = ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c","organizationType":"claude_max","userRateLimitTier":"default_claude_max_5x"}}"#))
+        XCTAssertEqual(five?.plan, "Max 5x")
+        let twenty = ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c","organizationType":"claude_max","organizationRateLimitTier":"default_claude_max_20x"}}"#))
+        XCTAssertEqual(PlanCatalog.match(serviceID: "claude", planName: twenty?.plan)?.usdMonthly, 200)
+        // どちらか分からないときは、作らない
+        let unknown = ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c","organizationType":"claude_max"}}"#))
+        XCTAssertNil(unknown?.plan)
+    }
+
+    func testTeamAndMissingAreNotInvented() {
+        XCTAssertNil(ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c","organizationType":"claude_team"}}"#))?.plan)
+        XCTAssertNil(ClaudeAccount.parse(d(#"{"oauthAccount":{"emailAddress":"a@b.c"}}"#))?.plan)
+    }
+}
