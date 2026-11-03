@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import CooltimeCore
 
 /// 振り返り: 日・週・月ごとに、制限に当たった回数、待たされた時間、週の枠の使い切り率を見る。
@@ -87,60 +86,59 @@ struct ReviewView: View {
         .frame(minWidth: 640, minHeight: 480)
     }
 
-    // MARK: 棒グラフ
+    // MARK: おばけ積み
 
-    private var xStride: (Calendar.Component, Int) {
-        switch span {
-        case .day: return (.hour, 3)
-        case .week: return (.day, 1)
-        case .month: return (.day, 5)
-        }
+    /// 1匹が何%分か。積み上がる数が、10匹までに収まるように決める。
+    private func unit(for maxValue: Double) -> Double {
+        [1, 2, 5, 10, 20, 25, 50, 100].first { ceil(maxValue / $0) <= 10 } ?? 100
     }
 
-    private var xFormat: Date.FormatStyle {
-        switch span {
-        case .day: return .dateTime.hour()
-        case .week: return .dateTime.weekday(.abbreviated)
-        case .month: return .dateTime.day()
+    private func columns(from: Date, to: Date, bars: [UsageBar], marks: [LimitMark]) -> [GhostStackChart.Column] {
+        let cal = Calendar.current
+        let comp: Calendar.Component = span == .day ? .hour : .day
+        var totals: [Int: Double] = [:]
+        for b in bars { totals[Int(b.start.timeIntervalSince1970), default: 0] += b.points }
+
+        var out: [GhostStackChart.Column] = []
+        var start = from
+        var index = 0
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "E"
+        while start < to, index < 400 {
+            let next = cal.date(byAdding: comp, value: 1, to: start) ?? to
+            let label: String?
+            switch span {
+            case .day: label = cal.component(.hour, from: start) % 3 == 0 ? "\(cal.component(.hour, from: start))" : nil
+            case .week: label = f.string(from: start)
+            case .month: label = (cal.component(.day, from: start) - 1) % 5 == 0 ? "\(cal.component(.day, from: start))" : nil
+            }
+            out.append(.init(id: index, label: label, value: totals[Int(start.timeIntervalSince1970)] ?? 0,
+                             limit: marks.contains { $0.start >= start && $0.start < next }))
+            start = next
+            index += 1
         }
+        return out
     }
 
-    /// いつ使ったか（棒グラフ）と、上限に当たった時刻（赤い点線）、何時によく使うか。
+    /// いつ使ったか（おばけ積み）と、上限に当たった日時、何時によく使うか。
     @ViewBuilder
     private func chartSection(from: Date, to: Date) -> some View {
         let bars = model.history.usageBars(span: span, from: from, to: to)
         let marks = model.history.limitMarks(from: from, to: to)
         let totals = model.history.hourOfDayTotals(from: from, to: to)
+        let cols = columns(from: from, to: to, bars: bars, marks: marks)
+        let unit = unit(for: cols.map(\.value).max() ?? 0)
 
         VStack(alignment: .leading, spacing: 10) {
             Text(span == .day ? "いつ使ったか（1時間ごと）" : "いつ使ったか（1日ごと）").font(.caption).foregroundStyle(.secondary)
             if bars.isEmpty && marks.isEmpty {
                 Text("この期間は、使った記録がありません。").foregroundStyle(.secondary)
             } else {
-                Chart {
-                    ForEach(bars) { b in
-                        BarMark(x: .value("日時", b.start, unit: span == .day ? .hour : .day), y: .value("使った量", b.points))
-                            .foregroundStyle(by: .value("サービス", model.displayName(b.account)))
-                    }
-                    ForEach(marks) { m in
-                        RuleMark(x: .value("上限", m.start))
-                            .foregroundStyle(.red)
-                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
-                            .annotation(position: .top, alignment: .center, spacing: 2) {
-                                Label("上限", systemImage: "pause.circle.fill").font(.caption2).foregroundStyle(.red)
-                            }
-                    }
-                }
-                .chartXScale(domain: from...to)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: xStride.0, count: xStride.1)) { _ in
-                        AxisGridLine()
-                        AxisTick()
-                        AxisValueLabel(format: xFormat)
-                    }
-                }
-                .chartYAxisLabel("週（月）の枠を使った量（%）")
-                .frame(height: 210)
+                GhostStackChart(columns: cols, unit: unit, dayView: span == .day)
+                    .frame(height: 230)
+                Label("おばけ1匹 ＝ 週（月）の枠の \(Int(unit))% 分。眠っている赤いおばけは、上限に当たった日", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
 
                 if !marks.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
@@ -154,19 +152,8 @@ struct ReviewView: View {
             }
 
             if span != .day, totals.contains(where: { $0 > 0 }) {
-                Text("何時によく使うか（0〜23時の合計）").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
-                Chart {
-                    ForEach(0..<24, id: \.self) { h in
-                        BarMark(x: .value("時", h), y: .value("使った量", totals[h]))
-                    }
-                }
-                .chartXAxis {
-                    AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in
-                        AxisGridLine()
-                        AxisValueLabel { if let h = value.as(Int.self) { Text("\(h)時") } }
-                    }
-                }
-                .frame(height: 110)
+                Text("何時によく使うか（0〜23時の合計。大きいほど、よく使う）").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                GhostSizeRow(values: totals).frame(height: 96)
             }
 
             if let peak = peakHour(span: span, bars: bars, totals: totals) {
