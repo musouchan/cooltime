@@ -88,6 +88,44 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: 一覧
+
+    var items: [Item] {
+        accounts.compactMap { a in
+            guard let s = Catalog.service(a.serviceID) else { return nil }
+            let snap = snapshots[a.id]
+            let multiple = accounts.filter { $0.serviceID == a.serviceID }.count > 1
+            return Item(account: a, service: s, snapshot: snap, state: evaluate(snap, now: now), showsAccountName: multiple)
+        }
+    }
+
+    var subscriptions: [Item] { items.filter { $0.service.kind == .subscription } }
+
+    var limited: [Item] {
+        subscriptions.filter { if case .limited = $0.state { return true } else { return false } }
+            .sorted { untilDate($0) < untilDate($1) }
+    }
+    var stale: [Item] {
+        subscriptions.filter { if case .stale = $0.state { return true } else { return false } }
+    }
+    var available: [Item] {
+        subscriptions.filter { $0.state == .available || $0.state == .unset }
+    }
+    var credits: [Item] {
+        items.filter { $0.service.kind == .credit || $0.snapshot?.credit != nil }
+    }
+
+    func untilDate(_ i: Item) -> Date {
+        if case .limited(let d) = i.state { return d }
+        return .distantFuture
+    }
+
+    var menuBarPick: MenuBarPick? {
+        pickForMenuBar(subscriptions.map { (id: $0.id, state: $0.state) })
+    }
+
+    // MARK: 取得
+
     /// 手元のファイルを読むだけのもの。
     func reloadFiles() {
         for a in accounts where Catalog.service(a.serviceID)?.method == .statuslineFile {
