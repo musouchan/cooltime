@@ -14,12 +14,12 @@ struct PopoverView: View {
             }
             if !model.limited.isEmpty || !model.stale.isEmpty {
                 section("制限中") {
-                    ForEach(model.limited) { LimitedRow(item: $0) }
-                    ForEach(model.stale) { StaleRow(item: $0) }
+                    ForEach(model.limited) { ServiceCard(item: $0, kind: .limited) }
+                    ForEach(model.stale) { ServiceCard(item: $0, kind: .stale) }
                 }
             }
             if !model.available.isEmpty {
-                section("使用可能") { ForEach(model.available) { AvailableRow(item: $0) } }
+                section("使用可能") { ForEach(model.available) { ServiceCard(item: $0, kind: .available) } }
             }
             if !model.credits.isEmpty {
                 section("クレジット", trailing: "時間では戻りません") { ForEach(model.credits) { CreditRow(item: $0) } }
@@ -42,7 +42,7 @@ struct PopoverView: View {
 
     @ViewBuilder
     private func section<C: View>(_ title: String, trailing: String? = nil, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title).font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -92,45 +92,64 @@ private struct RowFrame<Trailing: View>: View {
     }
 }
 
-private struct LimitedRow: View {
+/// サービス1つ分。見出し（アイコン・名前・状態）と、枠ごとの棒。
+/// 文字は最小限にして、棒と数字で、ひと目で分かるようにする。
+private struct ServiceCard: View {
+    enum Kind { case limited, available, stale }
+
     @EnvironmentObject var model: AppModel
     let item: Item
-    var body: some View {
-        let until: Date = { if case .limited(let d) = item.state { return d }; return model.now }()
-        let label = item.snapshot?.windows.filter { $0.isExhausted }.max { ($0.resetsAt ?? .distantPast) < ($1.resetsAt ?? .distantPast) }?.label ?? ""
-        RowFrame(item: item, subtitle: "\(label) · \(formatClock(until, now: model.now)) ごろ") {
-            Text(formatRemaining(until: until, now: model.now)).fontWeight(.semibold)
+    let kind: Kind
+
+    private var windows: [UsageWindow] { item.snapshot?.windows ?? [] }
+    private var failed: Bool { item.fetchError != nil && item.snapshot != nil }
+    private var dimmed: Bool { kind == .stale || failed }
+
+    @ViewBuilder private var glyph: some View {
+        switch kind {
+        case .limited: Image(systemName: "pause.circle").foregroundStyle(.red)
+        case .stale: Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
+        case .available:
+            if item.state == .unset { Image(systemName: "circle.dashed").foregroundStyle(.secondary) }
+            else if failed { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+            else { Image(systemName: "checkmark.circle").foregroundStyle(.green) }
         }
     }
-}
 
-private struct StaleRow: View {
-    @EnvironmentObject var model: AppModel
-    let item: Item
-    var body: some View {
-        RowFrame(item: item, subtitle: "リセット目安です。必要なら再確認してください") {
-            RefreshButton(item: item)
+    @ViewBuilder private var trailing: some View {
+        switch kind {
+        case .limited:
+            if case .limited(let until) = item.state {
+                Text(formatRemaining(until: until, now: model.now)).fontWeight(.semibold).monospacedDigit()
+            }
+        case .stale: RefreshButton(item: item)
+        case .available:
+            if item.state == .unset { RefreshButton(item: item) }
+            else if failed, let at = item.snapshot?.fetchedAt {
+                Text("\(formatClock(at, now: model.now)) 時点").font(.caption).foregroundStyle(.orange)
+            }
         }
     }
-}
 
-private struct AvailableRow: View {
-    @EnvironmentObject var model: AppModel
-    let item: Item
     var body: some View {
-        let sub: String = {
-            if item.state == .unset { return "まだ取得していません" }
-            guard let w = item.snapshot?.windows.filter({ !$0.isExhausted }).min(by: { ($0.remainingPercent ?? 100) < ($1.remainingPercent ?? 100) }) else { return "" }
-            if let r = w.resetsAt { return "\(w.label) · \(formatClock(r, now: model.now)) リセット" }
-            return w.label
-        }()
-        RowFrame(item: item, subtitle: sub) {
-            if item.state == .unset {
-                RefreshButton(item: item)
-            } else if item.fetchError != nil, let at = item.snapshot?.fetchedAt {
-                Text("\(formatClock(at, now: model.now)) 時点").foregroundStyle(.orange)
-            } else {
-                Text(item.snapshot.flatMap(availableSummary) ?? "").foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                glyph.frame(width: 18)
+                AppIconView(service: item.service, size: 20)
+                Text(item.title).fontWeight(.medium).lineLimit(1)
+                if item.isBusiness { Text("法人").font(.caption2).foregroundStyle(.secondary) }
+                Spacer(minLength: 4)
+                trailing
+            }
+            if let err = model.errors[item.id] {
+                Text(err).font(.caption).foregroundStyle(.red).lineLimit(2)
+            } else if kind == .stale {
+                Text("リセット目安です。必要なら再確認してください").font(.caption).foregroundStyle(.secondary)
+            } else if item.state == .unset {
+                Text("まだ取得していません").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(Array(windows.enumerated()), id: \.offset) { _, w in
+                WindowBarRow(window: w, now: model.now, dimmed: dimmed)
             }
         }
     }

@@ -514,7 +514,7 @@ final class MenuBarDisplayTests: XCTestCase {
 
     func testNoLimitShowsLowestRemainingWithItsSource() {
         let d = makeMenuBarDisplay([avail(13, "a"), avail(38, "codex"), avail(5, "c")])
-        XCTAssertEqual(d, .remaining(percent: 62, source: "codex"))
+        XCTAssertEqual(d, .remaining(percent: 62, source: "codex", scope: nil))
         XCTAssertEqual(d.text(now: now), "残り62%")
         XCTAssertEqual(d.characterState, .ok)
     }
@@ -522,7 +522,7 @@ final class MenuBarDisplayTests: XCTestCase {
     func testFailedItemsNumbersAreNotUsed() {
         var old = avail(90); old.fetchFailed = true
         let stale = MenuBarCandidate(state: .stale(since: now), snapshot: avail(95).snapshot, fetchFailed: false)
-        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40, "ok")]), .remaining(percent: 60, source: "ok"))
+        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40, "ok")]), .remaining(percent: 60, source: "ok", scope: nil))
     }
 
     func testAllFailedShowsCharacterOnly() {
@@ -541,7 +541,45 @@ final class MenuBarDisplayTests: XCTestCase {
                              fetchFailed: false, source: source)
         }
         XCTAssertEqual(makeMenuBarDisplay([credit(95.5, "v"), credit(18.4, "openrouter")]), .credit(text: "$18.40", source: "openrouter"))
-        XCTAssertEqual(makeMenuBarDisplay([credit(18.4, "o"), avail(70, "claude")]), .remaining(percent: 30, source: "claude"))
+        XCTAssertEqual(makeMenuBarDisplay([credit(18.4, "o"), avail(70, "claude")]), .remaining(percent: 30, source: "claude", scope: nil))
+    }
+
+    func twoWindows(fiveHourUsed: Double, weeklyUsed: Double, source: String = "claude") -> MenuBarCandidate {
+        MenuBarCandidate(state: .available,
+                         snapshot: Snapshot(windows: [
+                            UsageWindow(label: "5時間枠", usedPercent: fiveHourUsed, resetsAt: now.addingTimeInterval(3600)),
+                            UsageWindow(label: "週の枠", usedPercent: weeklyUsed, resetsAt: now.addingTimeInterval(5 * 86400))], fetchedAt: now),
+                         fetchFailed: false, source: source)
+    }
+
+    /// 5時間枠を出す。週の枠のほうが少なくても、10%を切るまでは、5時間枠。
+    func testFiveHourWindowWinsOverWeekly() {
+        let d = makeMenuBarDisplay([twoWindows(fiveHourUsed: 13, weeklyUsed: 60)])
+        XCTAssertEqual(d, .remaining(percent: 87, source: "claude", scope: nil))
+        XCTAssertEqual(d.text(now: now), "残り87%")
+    }
+
+    func testWeeklyShownOnlyUnderTenPercent() {
+        let d = makeMenuBarDisplay([twoWindows(fiveHourUsed: 13, weeklyUsed: 91)])  // 週の残り 9%
+        XCTAssertEqual(d, .remaining(percent: 9, source: "claude", scope: "週"))
+        XCTAssertEqual(d.text(now: now), "週9%")
+        // ちょうど10%は、まだ5時間枠
+        XCTAssertEqual(makeMenuBarDisplay([twoWindows(fiveHourUsed: 13, weeklyUsed: 90)]), .remaining(percent: 87, source: "claude", scope: nil))
+    }
+
+    func testWeeklyAlertComesFromAnyService() {
+        let d = makeMenuBarDisplay([twoWindows(fiveHourUsed: 10, weeklyUsed: 20, source: "claude"),
+                                    twoWindows(fiveHourUsed: 50, weeklyUsed: 96, source: "codex")])
+        XCTAssertEqual(d, .remaining(percent: 4, source: "codex", scope: "週"))
+    }
+
+    func testMonthlyOnlyServiceFallsBackToPlainRemaining() {
+        let monthly = MenuBarCandidate(state: .available,
+                                       snapshot: Snapshot(windows: [UsageWindow(label: "月の文字数", usedPercent: 59, resetsAt: now.addingTimeInterval(86400))], fetchedAt: now),
+                                       fetchFailed: false, source: "elevenlabs")
+        XCTAssertEqual(makeMenuBarDisplay([monthly]), .remaining(percent: 41, source: "elevenlabs", scope: nil))
+        // 5時間枠があるときは、そちらが先
+        XCTAssertEqual(makeMenuBarDisplay([monthly, avail(20, "claude")]), .remaining(percent: 80, source: "claude", scope: nil))
     }
 
     func testDaysOnlyWhenOverOneDay() {

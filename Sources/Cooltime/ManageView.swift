@@ -171,10 +171,9 @@ private struct DetailView: View {
     }
 
     private func windows(_ snap: Snapshot) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !snap.windows.isEmpty { Text("利用枠").font(.caption).foregroundStyle(.secondary) }
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(Array(snap.windows.enumerated()), id: \.offset) { _, w in windowCard(w) }
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(snap.windows.enumerated()), id: \.offset) { _, w in
+                WindowBarRow(window: w, now: model.now, dimmed: item.fetchError != nil)
             }
             if let c = snap.credit {
                 Text("クレジット残高 \(formatMoney(c))").font(.callout)
@@ -186,27 +185,6 @@ private struct DetailView: View {
                 Text("取得 \(formatClock(snap.fetchedAt, now: model.now))").font(.caption).foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func windowCard(_ w: UsageWindow) -> some View {
-        let state = evaluate(Snapshot(windows: [w], fetchedAt: item.snapshot?.fetchedAt ?? model.now), now: model.now)
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(w.label).fontWeight(.semibold)
-                Spacer()
-                StateGlyph(state: state)
-                Text(stateWord(state)).font(.caption)
-            }
-            switch state {
-            case .limited(let u): Text(formatRemaining(until: u, now: model.now)).font(.title2).fontWeight(.semibold)
-            case .stale: Text("リセット目安です").font(.title3)
-            default: Text(availableSummary(Snapshot(windows: [w], fetchedAt: model.now)) ?? "—").font(.title2).fontWeight(.semibold)
-            }
-            if let r = w.resetsAt { Text("リセット \(formatClock(r, now: model.now)) · 公式").font(.caption).foregroundStyle(.secondary) }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
     }
 
     @ViewBuilder private var setup: some View {
