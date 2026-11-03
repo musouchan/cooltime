@@ -20,7 +20,7 @@ struct ManageView: View {
                         ForEach(model.items.filter { $0.service.kind == .credit }) { sidebarRow($0) }
                     }
                     Section("表示") {
-                        Label("キャラクター", systemImage: "face.smiling").tag(AppModel.characterPane)
+                        Label("表示の設定", systemImage: "slider.horizontal.3").tag(AppModel.characterPane)
                     }
                 }
                 Divider()

@@ -562,7 +562,7 @@ final class MenuBarDisplayTests: XCTestCase {
     func testWeeklyShownOnlyUnderTenPercent() {
         let d = makeMenuBarDisplay([twoWindows(fiveHourUsed: 13, weeklyUsed: 91)])  // 週の残り 9%
         XCTAssertEqual(d, .remaining(percent: 9, source: "claude", scope: "週"))
-        XCTAssertEqual(d.text(now: now), "週9%")
+        XCTAssertEqual(d.text(now: now), "週残り9%")
         // ちょうど10%は、まだ5時間枠
         XCTAssertEqual(makeMenuBarDisplay([twoWindows(fiveHourUsed: 13, weeklyUsed: 90)]), .remaining(percent: 87, source: "claude", scope: nil))
     }

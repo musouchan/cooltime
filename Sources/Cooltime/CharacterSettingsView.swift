@@ -8,6 +8,7 @@ struct CharacterSettingsView: View {
     @AppStorage(CharacterPrefs.characterKey) private var characterID = "bunny"
     @AppStorage(CharacterPrefs.motionKey) private var motion = MotionSetting.full.rawValue
     @AppStorage(CharacterPrefs.lowPowerKey) private var inLowPower = false
+    @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -25,6 +26,19 @@ struct CharacterSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("リセットの書き方").font(.title3).fontWeight(.semibold)
+                    Picker("リセットの書き方", selection: $timeStyle) {
+                        ForEach(ResetTimeStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
+                    let sample = Date().addingTimeInterval(4 * 3600 + 12 * 60)
+                    Text("例: 残り87% · \((ResetTimeStyle(rawValue: timeStyle) ?? .absolute).text(for: sample, now: Date()))")
+                        .font(.callout).foregroundStyle(.secondary).monospacedDigit()
+                }
+
+                Divider()
+
                 Text("メニューバーのキャラクター").font(.title3).fontWeight(.semibold)
                 Text("状態は、色ではなく、耳の形・記号（z と ×）・動きで見分けられます。").font(.callout).foregroundStyle(.secondary)
 

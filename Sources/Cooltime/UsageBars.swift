@@ -21,11 +21,12 @@ struct RemainingBar: View {
 }
 
 /// 1つの枠（5時間枠・週の枠など）を、1行＋棒で見せる。
-/// 左に枠の名前、右に「残り87% · 17:20 リセット」。リセットは、日付と時刻（「あと○時間」の言い方はしない）。
+/// 左に枠の名前、右に「残り87% · 17:20 リセット」。リセットの書き方は、設定で選べる（既定は日付と時刻。「あと4時間12分」も選べる）。
 struct WindowBarRow: View {
     let window: UsageWindow
     let now: Date
     var dimmed = false
+    @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
 
     private var remaining: Double? { window.isExhausted ? 0 : window.remainingPercent }
 
@@ -46,7 +47,9 @@ struct WindowBarRow: View {
         } else if let p = window.remainingPercent {
             parts.append("残り\(Int(p.rounded()))%")
         }
-        if let reset = window.resetsAt { parts.append("\(formatClock(reset, now: now)) リセット") }
+        if let reset = window.resetsAt {
+            parts.append((ResetTimeStyle(rawValue: timeStyle) ?? .absolute).text(for: reset, now: now))
+        }
         return parts.joined(separator: " · ")
     }
 

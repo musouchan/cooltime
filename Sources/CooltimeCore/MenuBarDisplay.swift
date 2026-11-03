@@ -30,7 +30,7 @@ public enum MenuBarDisplay: Equatable, Sendable {
     public func text(now: Date) -> String? {
         switch self {
         case .limited(let until, _): return formatRemainingShort(until: until, now: now)
-        case .remaining(let p, _, let scope): return scope.map { "\($0)\(p)%" } ?? "残り\(p)%"
+        case .remaining(let p, _, let scope): return "\(scope ?? "")残り\(p)%"
         case .credit(let t, _): return t
         case .failed: return nil
         }
@@ -63,7 +63,7 @@ public struct MenuBarCandidate: Sendable {
 /// 上から順に、当てはまったものを出す。
 ///  1. 制限中があれば、一番早く戻るものの時間
 ///  2. 制限なしなら、5時間枠など短い枠の、残りが最も少ないもの（「残り87%」）。
-///     週・月の枠は、残りが10%を切ったときだけ、それを優先して出す（「週9%」）。
+///     週・月の枠は、残りが10%を切ったときだけ、それを優先して出す（「週残り9%」）。
 ///     短い枠が1つも無いときは、週・月の枠の残りが最も少ないもの。割合が無ければ、残高が最も少ないもの
 ///  3. 数字が1つも取れていなければ、キャラクターだけ
 /// 取得に失敗している・目安を過ぎた・未取得のものの数字は、使わない（古い数字を出さない）。
