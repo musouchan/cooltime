@@ -339,3 +339,21 @@ final class AppVersionTests: XCTestCase {
         XCTAssertTrue(AppVersion.isNewer("v0.0.1", than: "0.0.0"))
     }
 }
+
+final class CodexErrorTextTests: XCTestCase {
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testNetworkErrorIsShortJapanese() {
+        let data = d(#"{"id":2,"error":{"code":-32603,"message":"failed to fetch codex rate limits: error sending request for url (https://chatgpt.com/backend-api/wham/usage)"}}"#)
+        XCTAssertThrowsError(try CodexRateLimits.parse(data, fetchedAt: Date())) { e in
+            XCTAssertEqual((e as? ParseError)?.errorDescription, "Codex が ChatGPT に接続できませんでした（通信を確認）")
+        }
+    }
+
+    func testAuthErrorSuggestsRelogin() {
+        let data = d(#"{"id":2,"error":{"message":"401 Unauthorized"}}"#)
+        XCTAssertThrowsError(try CodexRateLimits.parse(data, fetchedAt: Date())) { e in
+            XCTAssertTrue((e as? ParseError)?.errorDescription?.contains("再ログイン") == true)
+        }
+    }
+}
