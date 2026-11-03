@@ -449,3 +449,101 @@ final class DurationTests: XCTestCase {
         XCTAssertEqual(formatDuration(30 * 3600), "30時間")
     }
 }
+
+final class CharacterMotionTests: XCTestCase {
+    static let json = """
+    {"states":{
+      "limit":{"targets":{"root":{"duration_s":3,"easing":"ease-in-out","keyframes":{"0":{"translateY":0},"50":{"translateY":-9},"100":{"translateY":0}}}}},
+      "ok":{"targets":{"eyes":{"duration_s":3.4,"easing":"linear","keyframes":{"0":{"scaleY":1},"90":{"scaleY":1},"94":{"scaleY":0.08},"100":{"scaleY":1}}}}},
+      "fail":{"targets":{"root":{"duration_s":4,"easing":"ease-in-out","keyframes":{"0":{"rotate":0},"88":{"rotate":0},"91":{"rotate":-5},"100":{"rotate":0}}}}}
+    }}
+    """
+    let motion = CharacterMotion(json: Data(CharacterMotionTests.json.utf8))!
+
+    func testEaseInOutPeaksAtMiddle() {
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 0).ty, 0, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 1.5).ty, -9, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 0.75).ty, -4.5, accuracy: 1e-9)  // 真ん中は、どちらの式でも半分
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 3).ty, 0, accuracy: 1e-9)       // 1周して戻る
+    }
+
+    func testLinearBlink() {
+        XCTAssertEqual(motion.transform(state: .ok, group: "eyes", at: 1).scaleY, 1, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .ok, group: "eyes", at: 3.4 * 0.92).scaleY, 0.54, accuracy: 1e-6)
+    }
+
+    func testUnknownGroupIsIdentityAndPeriods() {
+        XCTAssertEqual(motion.transform(state: .ok, group: "root", at: 1), GroupTransform())
+        XCTAssertEqual(motion.period(state: .limit), 3)
+        XCTAssertEqual(motion.groups(state: .fail), ["root"])
+    }
+
+    func testNegativeTimeWraps() {
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: -1.5).ty, -9, accuracy: 1e-9)
+    }
+
+    func testBundledMotionFileParses() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("characters/motion.json")
+        let m = try XCTUnwrap(CharacterMotion(json: try Data(contentsOf: url)))
+        XCTAssertEqual(m.groups(state: .ok), ["eyes", "look", "root"])
+        XCTAssertEqual(m.groups(state: .limit), ["root", "zz"])
+        XCTAssertEqual(m.groups(state: .fail), ["root"])
+    }
+}
+
+final class MenuBarDisplayTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func avail(_ used: Double) -> MenuBarCandidate {
+        MenuBarCandidate(state: .available,
+                         snapshot: Snapshot(windows: [UsageWindow(label: "5時間枠", usedPercent: used, resetsAt: now.addingTimeInterval(3600))], fetchedAt: now),
+                         fetchFailed: false)
+    }
+    func limited(_ minutes: Double) -> MenuBarCandidate {
+        MenuBarCandidate(state: .limited(until: now.addingTimeInterval(minutes * 60)), snapshot: nil, fetchFailed: false)
+    }
+
+    func testLimitedShowsEarliestOnly() {
+        let d = makeMenuBarDisplay([limited(300), limited(43), avail(10)])
+        XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60)))
+        XCTAssertEqual(d.text(now: now), "あと43分")
+        XCTAssertEqual(d.characterState, .limit)
+    }
+
+    func testNoLimitShowsLowestRemaining() {
+        let d = makeMenuBarDisplay([avail(13), avail(38), avail(5)])
+        XCTAssertEqual(d, .remaining(percent: 62))
+        XCTAssertEqual(d.text(now: now), "残り62%")
+        XCTAssertEqual(d.characterState, .ok)
+    }
+
+    func testFailedItemsNumbersAreNotUsed() {
+        var old = avail(90); old.fetchFailed = true
+        let stale = MenuBarCandidate(state: .stale(since: now), snapshot: avail(95).snapshot, fetchFailed: false)
+        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40)]), .remaining(percent: 60))
+    }
+
+    func testAllFailedShowsCharacterOnly() {
+        var old = avail(90); old.fetchFailed = true
+        let d = makeMenuBarDisplay([old, MenuBarCandidate(state: .unset, snapshot: nil, fetchFailed: false)])
+        XCTAssertEqual(d, .failed)
+        XCTAssertNil(d.text(now: now))
+        XCTAssertEqual(d.characterState, .fail)
+        XCTAssertEqual(makeMenuBarDisplay([]), .failed)
+    }
+
+    func testCreditUsedOnlyWhenNoPercent() {
+        let credit = { (amount: Double) in
+            MenuBarCandidate(state: .available, snapshot: Snapshot(credit: CreditBalance(amount: amount, currency: "USD"), fetchedAt: self.now), fetchFailed: false)
+        }
+        XCTAssertEqual(makeMenuBarDisplay([credit(95.5), credit(18.4)]), .credit(text: "$18.40"))
+        XCTAssertEqual(makeMenuBarDisplay([credit(18.4), avail(70)]), .remaining(percent: 30))
+    }
+
+    func testDaysOnlyWhenOverOneDay() {
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval((2 * 24 + 5) * 3600), now: now), "あと2日")
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(23 * 3600 + 59 * 60), now: now), "あと23時間59分")
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(24 * 3600), now: now), "あと1日")
+    }
+}

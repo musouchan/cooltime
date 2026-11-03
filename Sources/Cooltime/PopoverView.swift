@@ -4,7 +4,7 @@ import CooltimeCore
 
 struct PopoverView: View {
     @EnvironmentObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject var actions: AppActions
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -29,15 +29,9 @@ struct PopoverView: View {
                 Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
                     .help("すべてのサービスを更新します（通信します）")
                 Spacer()
-                Button {
-                    openWindow(id: "review")
-                    NSApp.activate(ignoringOtherApps: true)
-                } label: { Image(systemName: "chart.bar") }
+                Button { actions.openReview() } label: { Image(systemName: "chart.bar") }
                     .help("振り返り").accessibilityLabel("振り返り")
-                Button("管理…") {
-                    openWindow(id: "manage")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
+                Button("管理…") { actions.openManage() }
                 Button("終了") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
             }

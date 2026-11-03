@@ -193,9 +193,24 @@ final class AppModel: ObservableObject {
         return .distantFuture
     }
 
-    var menuBarPick: MenuBarPick? {
-        pickForMenuBar(subscriptions.map { (id: $0.id, state: $0.state) })
+    /// メニューバーに出すもの（キャラクターと、一番大事な1つの数字）。
+    var menuBarDisplay: MenuBarDisplay {
+        makeMenuBarDisplay(items.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil) })
     }
+
+    /// メニューバーにマウスを乗せたときの説明。
+    var menuBarTooltip: String {
+        let list = limited
+        if list.isEmpty { return "制限中のものはありません" }
+        return list.map { i in
+            let label = i.snapshot?.windows.filter { $0.isExhausted }
+                .max { ($0.resetsAt ?? .distantPast) < ($1.resetsAt ?? .distantPast) }?.label
+            return "\(i.title)\(label.map { " · \($0)" } ?? "")  \(formatRemaining(until: untilDate(i), now: now))"
+        }.joined(separator: "\n")
+    }
+
+    /// 管理画面の「キャラクター」の行（アカウントではないので、決まった ID で選ぶ）。
+    static let characterPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
 
     // MARK: 取得
 
