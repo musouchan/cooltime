@@ -195,7 +195,7 @@ final class AppModel: ObservableObject {
 
     /// メニューバーに出すもの（キャラクターと、一番大事な1つの数字）。
     var menuBarDisplay: MenuBarDisplay {
-        makeMenuBarDisplay(items.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil) })
+        makeMenuBarDisplay(items.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil, source: $0.service.id) })
     }
 
     /// メニューバーにマウスを乗せたときの説明。

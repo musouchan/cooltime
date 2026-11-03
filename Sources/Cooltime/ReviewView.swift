@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import CooltimeCore
 
 /// 振り返り: 日・週・月ごとに、制限に当たった回数、待たされた時間、週の枠の使い切り率を見る。
@@ -33,6 +34,8 @@ struct ReviewView: View {
                     tile("制限で待った時間", formatDuration(summary.waited))
                     tile("週の枠の使い切り率", weeklyAverage(summary))
                 }
+
+                chartSection(from: from, to: to)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("サービスごと").font(.caption).foregroundStyle(.secondary)
@@ -82,6 +85,109 @@ struct ReviewView: View {
             .padding(20)
         }
         .frame(minWidth: 640, minHeight: 480)
+    }
+
+    // MARK: 棒グラフ
+
+    private var xStride: (Calendar.Component, Int) {
+        switch span {
+        case .day: return (.hour, 3)
+        case .week: return (.day, 1)
+        case .month: return (.day, 5)
+        }
+    }
+
+    private var xFormat: Date.FormatStyle {
+        switch span {
+        case .day: return .dateTime.hour()
+        case .week: return .dateTime.weekday(.abbreviated)
+        case .month: return .dateTime.day()
+        }
+    }
+
+    /// いつ使ったか（棒グラフ）と、上限に当たった時刻（赤い点線）、何時によく使うか。
+    @ViewBuilder
+    private func chartSection(from: Date, to: Date) -> some View {
+        let bars = model.history.usageBars(span: span, from: from, to: to)
+        let marks = model.history.limitMarks(from: from, to: to)
+        let totals = model.history.hourOfDayTotals(from: from, to: to)
+
+        VStack(alignment: .leading, spacing: 10) {
+            Text(span == .day ? "いつ使ったか（1時間ごと）" : "いつ使ったか（1日ごと）").font(.caption).foregroundStyle(.secondary)
+            if bars.isEmpty && marks.isEmpty {
+                Text("この期間は、使った記録がありません。").foregroundStyle(.secondary)
+            } else {
+                Chart {
+                    ForEach(bars) { b in
+                        BarMark(x: .value("日時", b.start, unit: span == .day ? .hour : .day), y: .value("使った量", b.points))
+                            .foregroundStyle(by: .value("サービス", model.displayName(b.account)))
+                    }
+                    ForEach(marks) { m in
+                        RuleMark(x: .value("上限", m.start))
+                            .foregroundStyle(.red)
+                            .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                            .annotation(position: .top, alignment: .center, spacing: 2) {
+                                Label("上限", systemImage: "pause.circle.fill").font(.caption2).foregroundStyle(.red)
+                            }
+                    }
+                }
+                .chartXScale(domain: from...to)
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: xStride.0, count: xStride.1)) { _ in
+                        AxisGridLine()
+                        AxisTick()
+                        AxisValueLabel(format: xFormat)
+                    }
+                }
+                .chartYAxisLabel("週（月）の枠を使った量（%）")
+                .frame(height: 210)
+
+                if !marks.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(marks) { m in
+                            Label("\(formatClock(m.start, now: model.now)) 上限に当たった（\(model.displayName(m.account)) \(m.label)。\(formatClock(m.until, now: model.now)) に戻る）",
+                                  systemImage: "pause.circle")
+                                .font(.caption)
+                        }
+                    }
+                }
+            }
+
+            if span != .day, totals.contains(where: { $0 > 0 }) {
+                Text("何時によく使うか（0〜23時の合計）").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                Chart {
+                    ForEach(0..<24, id: \.self) { h in
+                        BarMark(x: .value("時", h), y: .value("使った量", totals[h]))
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks(values: [0, 3, 6, 9, 12, 15, 18, 21]) { value in
+                        AxisGridLine()
+                        AxisValueLabel { if let h = value.as(Int.self) { Text("\(h)時") } }
+                    }
+                }
+                .frame(height: 110)
+            }
+
+            if let peak = peakHour(span: span, bars: bars, totals: totals) {
+                Label(peak, systemImage: "clock").font(.callout)
+            }
+            Text("週（月）の枠の使用%が増えた分を、増えたと気づいた時刻で集めています。1%ずつの記録なので、少しの量は、まとめて出ます。この機能を入れる前の分は、時間ごとには分かりません。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// 一番よく使った時間帯（日）／時間帯（週・月）の一言。
+    private func peakHour(span: ReviewSpan, bars: [UsageBar], totals: [Double]) -> String? {
+        let cal = Calendar.current
+        if span == .day {
+            var byHour: [Int: Double] = [:]
+            for b in bars { byHour[cal.component(.hour, from: b.start), default: 0] += b.points }
+            guard let top = byHour.max(by: { $0.value < $1.value }), top.value > 0 else { return nil }
+            return "一番使った時間帯: \(top.key)〜\(top.key + 1)時（\(Int(top.value.rounded()))%分）"
+        }
+        guard let top = totals.enumerated().max(by: { $0.element < $1.element }), top.element > 0 else { return nil }
+        return "一番よく使う時間帯: \(top.offset)〜\(top.offset + 1)時"
     }
 
     private func tile(_ label: String, _ value: String) -> some View {

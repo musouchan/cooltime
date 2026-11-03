@@ -83,12 +83,25 @@ final class StatusItemController: NSObject {
         display = model.menuBarDisplay
         let text = display.text(now: model.now)
 
-        if text != lastTitle {
-            lastTitle = text
+        // 数字と、その数字のもとのサービス（アイコン）が変わったときだけ、タイトルを作り直す
+        let service = display.source.flatMap { Catalog.service($0) }
+        let titleKey = "\(text ?? "")|\(service?.id ?? "")"
+        if titleKey != lastTitle {
+            lastTitle = titleKey
             if let text {
-                button.attributedTitle = NSAttributedString(string: " " + text, attributes: [
+                let title = NSMutableAttributedString(string: " ")
+                if let service {
+                    // サービスのアプリのアイコン（色つき）を、数字の前に添える
+                    let attachment = NSTextAttachment()
+                    attachment.image = ServiceIconImage.image(for: service, points: 14)
+                    attachment.bounds = CGRect(x: 0, y: -3, width: 14, height: 14)
+                    title.append(NSAttributedString(attachment: attachment))
+                    title.append(NSAttributedString(string: " "))
+                }
+                title.append(NSAttributedString(string: text, attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-                ])
+                ]))
+                button.attributedTitle = title
                 button.imagePosition = .imageLeading
             } else {
                 button.attributedTitle = NSAttributedString(string: "")
@@ -96,7 +109,7 @@ final class StatusItemController: NSObject {
             }
         }
         button.toolTip = model.menuBarTooltip
-        button.setAccessibilityLabel("Cooltime: " + (text ?? "取得できていません"))
+        button.setAccessibilityLabel("Cooltime: " + (service.map { "\($0.name) " } ?? "") + (text ?? "取得できていません"))
         updateImage(force: true)
         updateTimer()
     }

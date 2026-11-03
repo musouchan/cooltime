@@ -495,25 +495,26 @@ final class CharacterMotionTests: XCTestCase {
 final class MenuBarDisplayTests: XCTestCase {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func avail(_ used: Double) -> MenuBarCandidate {
+    func avail(_ used: Double, _ source: String = "a") -> MenuBarCandidate {
         MenuBarCandidate(state: .available,
                          snapshot: Snapshot(windows: [UsageWindow(label: "5時間枠", usedPercent: used, resetsAt: now.addingTimeInterval(3600))], fetchedAt: now),
-                         fetchFailed: false)
+                         fetchFailed: false, source: source)
     }
-    func limited(_ minutes: Double) -> MenuBarCandidate {
-        MenuBarCandidate(state: .limited(until: now.addingTimeInterval(minutes * 60)), snapshot: nil, fetchFailed: false)
+    func limited(_ minutes: Double, _ source: String = "a") -> MenuBarCandidate {
+        MenuBarCandidate(state: .limited(until: now.addingTimeInterval(minutes * 60)), snapshot: nil, fetchFailed: false, source: source)
     }
 
     func testLimitedShowsEarliestOnly() {
-        let d = makeMenuBarDisplay([limited(300), limited(43), avail(10)])
-        XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60)))
+        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude"), avail(10)])
+        XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60), source: "claude"))
         XCTAssertEqual(d.text(now: now), "あと43分")
         XCTAssertEqual(d.characterState, .limit)
+        XCTAssertEqual(d.source, "claude")
     }
 
-    func testNoLimitShowsLowestRemaining() {
-        let d = makeMenuBarDisplay([avail(13), avail(38), avail(5)])
-        XCTAssertEqual(d, .remaining(percent: 62))
+    func testNoLimitShowsLowestRemainingWithItsSource() {
+        let d = makeMenuBarDisplay([avail(13, "a"), avail(38, "codex"), avail(5, "c")])
+        XCTAssertEqual(d, .remaining(percent: 62, source: "codex"))
         XCTAssertEqual(d.text(now: now), "残り62%")
         XCTAssertEqual(d.characterState, .ok)
     }
@@ -521,7 +522,7 @@ final class MenuBarDisplayTests: XCTestCase {
     func testFailedItemsNumbersAreNotUsed() {
         var old = avail(90); old.fetchFailed = true
         let stale = MenuBarCandidate(state: .stale(since: now), snapshot: avail(95).snapshot, fetchFailed: false)
-        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40)]), .remaining(percent: 60))
+        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40, "ok")]), .remaining(percent: 60, source: "ok"))
     }
 
     func testAllFailedShowsCharacterOnly() {
@@ -529,16 +530,18 @@ final class MenuBarDisplayTests: XCTestCase {
         let d = makeMenuBarDisplay([old, MenuBarCandidate(state: .unset, snapshot: nil, fetchFailed: false)])
         XCTAssertEqual(d, .failed)
         XCTAssertNil(d.text(now: now))
+        XCTAssertNil(d.source)
         XCTAssertEqual(d.characterState, .fail)
         XCTAssertEqual(makeMenuBarDisplay([]), .failed)
     }
 
     func testCreditUsedOnlyWhenNoPercent() {
-        let credit = { (amount: Double) in
-            MenuBarCandidate(state: .available, snapshot: Snapshot(credit: CreditBalance(amount: amount, currency: "USD"), fetchedAt: self.now), fetchFailed: false)
+        let credit = { (amount: Double, source: String) in
+            MenuBarCandidate(state: .available, snapshot: Snapshot(credit: CreditBalance(amount: amount, currency: "USD"), fetchedAt: self.now),
+                             fetchFailed: false, source: source)
         }
-        XCTAssertEqual(makeMenuBarDisplay([credit(95.5), credit(18.4)]), .credit(text: "$18.40"))
-        XCTAssertEqual(makeMenuBarDisplay([credit(18.4), avail(70)]), .remaining(percent: 30))
+        XCTAssertEqual(makeMenuBarDisplay([credit(95.5, "v"), credit(18.4, "openrouter")]), .credit(text: "$18.40", source: "openrouter"))
+        XCTAssertEqual(makeMenuBarDisplay([credit(18.4, "o"), avail(70, "claude")]), .remaining(percent: 30, source: "claude"))
     }
 
     func testDaysOnlyWhenOverOneDay() {
@@ -546,4 +549,80 @@ final class MenuBarDisplayTests: XCTestCase {
         XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(23 * 3600 + 59 * 60), now: now), "あと23時間59分")
         XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(24 * 3600), now: now), "あと1日")
     }
+}
+
+final class UsageBucketTests: XCTestCase {
+    let a = UUID()
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)  // 2027-01-15 08:00:00 UTC
+
+    func snap(_ used: Double, at: Date, label: String = "週の枠") -> Snapshot {
+        Snapshot(windows: [UsageWindow(label: label, usedPercent: used, resetsAt: t0.addingTimeInterval(5 * 86400))], fetchedAt: at)
+    }
+
+    func testIncreaseIsRecordedInTheHourItWasSeen() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, at: t0), now: t0)                       // 最初の値は、数えない
+        h.observe(account: a, serviceID: "claude", snapshot: snap(13, at: t0.addingTimeInterval(600)), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(13, at: t0.addingTimeInterval(1200)), now: t0) // 増えていない
+        h.observe(account: a, serviceID: "claude", snapshot: snap(15, at: t0.addingTimeInterval(7200)), now: t0) // 2時間後
+        XCTAssertEqual(h.buckets.count, 2)
+        XCTAssertEqual(h.buckets.map(\.points).reduce(0, +), 5)
+        XCTAssertEqual(h.buckets[0].points, 3)
+    }
+
+    func testShortWindowsAreNotCounted() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, at: t0, label: "5時間枠"), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(40, at: t0.addingTimeInterval(60), label: "5時間枠"), now: t0)
+        XCTAssertTrue(h.buckets.isEmpty)
+        XCTAssertTrue(UsageHistory.isBudgetWindow("週の枠"))
+        XCTAssertTrue(UsageHistory.isBudgetWindow("月の文字数"))
+        XCTAssertFalse(UsageHistory.isBudgetWindow("5時間枠"))
+    }
+
+    func testOldRecordWithoutBucketsStillDecodes() throws {
+        let json = #"{"startedAt":1800000000,"periods":[],"limits":[],"open":{}}"#
+        let h = try JSONDecoder.cooltimeTest.decode(UsageHistory.self, from: Data(json.utf8))
+        XCTAssertEqual(h.startedAt, t0)
+        XCTAssertTrue(h.buckets.isEmpty)
+    }
+
+    func testBarsByHourAndByDayAndHourOfDay() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(12, at: t0.addingTimeInterval(60)), now: t0)          // 08時 +2
+        h.observe(account: a, serviceID: "claude", snapshot: snap(15, at: t0.addingTimeInterval(3 * 3600)), now: t0)    // 11時 +3
+        let day = cal.startOfDay(for: t0)
+        let hourly = h.usageBars(span: .day, from: day, to: day.addingTimeInterval(86400), calendar: cal)
+        XCTAssertEqual(hourly.map(\.points), [2, 3])
+        let daily = h.usageBars(span: .week, from: day, to: day.addingTimeInterval(7 * 86400), calendar: cal)
+        XCTAssertEqual(daily.count, 1)
+        XCTAssertEqual(daily[0].points, 5)
+        let byHour = h.hourOfDayTotals(from: day, to: day.addingTimeInterval(86400), calendar: cal)
+        XCTAssertEqual(byHour[8], 2)
+        XCTAssertEqual(byHour[11], 3)
+        XCTAssertEqual(byHour.reduce(0, +), 5)
+    }
+
+    func testLimitMarksInRange() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(100, at: t0, label: "5時間枠"), now: t0)
+        XCTAssertEqual(h.limitMarks(from: t0.addingTimeInterval(-60), to: t0.addingTimeInterval(60)).count, 1)
+        XCTAssertTrue(h.limitMarks(from: t0.addingTimeInterval(3600), to: t0.addingTimeInterval(7200)).isEmpty)
+    }
+
+    func testForgetRemovesBuckets() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(20, at: t0.addingTimeInterval(60)), now: t0)
+        XCTAssertFalse(h.buckets.isEmpty)
+        h.forget(account: a)
+        XCTAssertTrue(h.buckets.isEmpty)
+    }
+}
+
+private extension JSONDecoder {
+    static var cooltimeTest: JSONDecoder { let d = JSONDecoder(); d.dateDecodingStrategy = .secondsSince1970; return d }
 }
