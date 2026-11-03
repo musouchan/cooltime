@@ -14,6 +14,14 @@ public func formatRemaining(until: Date, now: Date) -> String {
     return h == 0 ? "あと\(d)日" : "あと\(d)日\(h)時間"
 }
 
+/// 「6時間12分」「45分」「0分」。かかった時間の合計に使う（「あと」は付けない）。
+public func formatDuration(_ seconds: TimeInterval) -> String {
+    let minutes = max(0, Int((seconds / 60).rounded()))
+    if minutes < 60 { return "\(minutes)分" }
+    let h = minutes / 60, m = minutes % 60
+    return m == 0 ? "\(h)時間" : "\(h)時間\(m)分"
+}
+
 /// この Mac のタイムゾーンで「18:30」または「11/1 19:02」。
 public func formatClock(_ date: Date, now: Date, timeZone: TimeZone = .current) -> String {
     var cal = Calendar(identifier: .gregorian)

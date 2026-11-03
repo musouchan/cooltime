@@ -71,14 +71,17 @@ public struct Account: Codable, Equatable, Identifiable, Sendable {
     public var paymentURL: String
     /// Claude Code のステータスライン取得元の識別名（複数アカウント用）。
     public var slot: String
+    /// 月額（円）。本人が入力する。振り返りで、払っている額と使い方を並べるために使う。
+    public var monthlyPrice: Int?
 
     public init(id: UUID = UUID(), serviceID: String, name: String = "", type: AccountType = .personal,
-                paymentURL: String = "", slot: String = "default") {
+                paymentURL: String = "", slot: String = "default", monthlyPrice: Int? = nil) {
         self.id = id
         self.serviceID = serviceID
         self.name = name
         self.type = type
         self.paymentURL = paymentURL
         self.slot = slot
+        self.monthlyPrice = monthlyPrice
     }
 }

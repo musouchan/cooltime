@@ -357,3 +357,193 @@ final class CodexErrorTextTests: XCTestCase {
         }
     }
 }
+
+final class UsageHistoryTests: XCTestCase {
+    let a = UUID()
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func snap(_ used: Double, reset: Date, at: Date, label: String = "5時間枠") -> Snapshot {
+        Snapshot(windows: [UsageWindow(label: label, usedPercent: used, resetsAt: reset)], fetchedAt: at)
+    }
+
+    func testPeakAndPeriodRollover() {
+        var h = UsageHistory(startedAt: t0)
+        let r1 = t0.addingTimeInterval(3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(20, reset: r1, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(55, reset: r1.addingTimeInterval(60), at: t0.addingTimeInterval(600)),
+                  now: t0.addingTimeInterval(600))
+        XCTAssertEqual(h.open.count, 1)
+        XCTAssertEqual(h.open.values.first?.peakUsed, 55)
+        // 次の期間
+        let r2 = r1.addingTimeInterval(5 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(5, reset: r2, at: r1.addingTimeInterval(60)), now: r1.addingTimeInterval(60))
+        XCTAssertEqual(h.periods.count, 1)
+        XCTAssertEqual(h.periods[0].peakUsed, 55)
+    }
+
+    func testLimitIsCountedOncePerPeriodAndWaitTimeSums() {
+        var h = UsageHistory(startedAt: t0)
+        let reset = t0.addingTimeInterval(2 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(100, reset: reset, at: t0), now: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(100, reset: reset, at: t0.addingTimeInterval(60)), now: t0.addingTimeInterval(60))
+        XCTAssertEqual(h.limits.count, 1)
+        let s = h.summary(from: t0, to: t0.addingTimeInterval(86400), now: t0.addingTimeInterval(86400))
+        XCTAssertEqual(s.limitHits, 1)
+        XCTAssertEqual(s.waited, 2 * 3600, accuracy: 1)
+    }
+
+    /// リセットの直前まで見えていない期間は、使い残しを出さない（数字を作らない）。
+    func testUnusedNeedsObservationNearReset() {
+        let p = WindowPeriod(account: a, serviceID: "claude", label: "週の枠", resetsAt: t0.addingTimeInterval(7 * 86400),
+                             peakUsed: 30, firstSeen: t0, lastSeen: t0.addingTimeInterval(86400), hitLimit: false)
+        XCTAssertNil(p.unused)
+        var q = p
+        q.lastSeen = q.resetsAt.addingTimeInterval(-3600)
+        XCTAssertEqual(q.unused, 70)
+    }
+
+    func testPlanDownSuggestionAfterThreeLightWeeks() {
+        var h = UsageHistory(startedAt: t0)
+        for i in 0..<3 {
+            let reset = t0.addingTimeInterval(Double(i + 1) * 7 * 86400)
+            h.periods.append(WindowPeriod(account: a, serviceID: "claude", label: "週の枠", resetsAt: reset, peakUsed: 30,
+                                          firstSeen: reset.addingTimeInterval(-7 * 86400), lastSeen: reset.addingTimeInterval(-600),
+                                          hitLimit: false))
+        }
+        let s = h.suggestions(now: t0.addingTimeInterval(22 * 86400), name: { _ in "Claude" })
+        XCTAssertEqual(s.map(\.kind), [.planDown])
+        XCTAssertTrue(s[0].text.contains("平均30%"))
+    }
+
+    func testNoSuggestionsWithoutEnoughData() {
+        var h = UsageHistory(startedAt: t0)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(10, reset: t0.addingTimeInterval(3600), at: t0), now: t0)
+        XCTAssertTrue(h.suggestions(now: t0, name: { _ in "Claude" }).isEmpty)
+    }
+
+    func testUseItOrLoseIt() {
+        var h = UsageHistory(startedAt: t0)
+        let reset = t0.addingTimeInterval(10 * 3600)
+        h.observe(account: a, serviceID: "claude", snapshot: snap(35, reset: reset, at: t0, label: "週の枠"), now: t0)
+        let s = h.suggestions(now: t0, name: { _ in "Claude" })
+        XCTAssertEqual(s.map(\.kind), [.useItOrLoseIt])
+        XCTAssertTrue(s[0].text.contains("あと65%"))
+    }
+
+    func testRangeIsMondayBasedWeek() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+        let f = ISO8601DateFormatter()
+        let wed = f.date(from: "2026-11-04T03:00:00Z")!  // 水曜 12:00 JST
+        let (s, e) = UsageHistory.range(.week, containing: wed, calendar: cal)
+        XCTAssertEqual(f.string(from: s), "2026-11-01T15:00:00Z")  // 月曜 0:00 JST
+        XCTAssertEqual(e.timeIntervalSince(s), 7 * 86400)
+    }
+}
+
+final class DurationTests: XCTestCase {
+    func testFormatDuration() {
+        XCTAssertEqual(formatDuration(0), "0分")
+        XCTAssertEqual(formatDuration(45 * 60), "45分")
+        XCTAssertEqual(formatDuration(6 * 3600 + 12 * 60), "6時間12分")
+        XCTAssertEqual(formatDuration(30 * 3600), "30時間")
+    }
+}
+
+final class CharacterMotionTests: XCTestCase {
+    static let json = """
+    {"states":{
+      "limit":{"targets":{"root":{"duration_s":3,"easing":"ease-in-out","keyframes":{"0":{"translateY":0},"50":{"translateY":-9},"100":{"translateY":0}}}}},
+      "ok":{"targets":{"eyes":{"duration_s":3.4,"easing":"linear","keyframes":{"0":{"scaleY":1},"90":{"scaleY":1},"94":{"scaleY":0.08},"100":{"scaleY":1}}}}},
+      "fail":{"targets":{"root":{"duration_s":4,"easing":"ease-in-out","keyframes":{"0":{"rotate":0},"88":{"rotate":0},"91":{"rotate":-5},"100":{"rotate":0}}}}}
+    }}
+    """
+    let motion = CharacterMotion(json: Data(CharacterMotionTests.json.utf8))!
+
+    func testEaseInOutPeaksAtMiddle() {
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 0).ty, 0, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 1.5).ty, -9, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 0.75).ty, -4.5, accuracy: 1e-9)  // 真ん中は、どちらの式でも半分
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: 3).ty, 0, accuracy: 1e-9)       // 1周して戻る
+    }
+
+    func testLinearBlink() {
+        XCTAssertEqual(motion.transform(state: .ok, group: "eyes", at: 1).scaleY, 1, accuracy: 1e-9)
+        XCTAssertEqual(motion.transform(state: .ok, group: "eyes", at: 3.4 * 0.92).scaleY, 0.54, accuracy: 1e-6)
+    }
+
+    func testUnknownGroupIsIdentityAndPeriods() {
+        XCTAssertEqual(motion.transform(state: .ok, group: "root", at: 1), GroupTransform())
+        XCTAssertEqual(motion.period(state: .limit), 3)
+        XCTAssertEqual(motion.groups(state: .fail), ["root"])
+    }
+
+    func testNegativeTimeWraps() {
+        XCTAssertEqual(motion.transform(state: .limit, group: "root", at: -1.5).ty, -9, accuracy: 1e-9)
+    }
+
+    func testBundledMotionFileParses() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("characters/motion.json")
+        let m = try XCTUnwrap(CharacterMotion(json: try Data(contentsOf: url)))
+        XCTAssertEqual(m.groups(state: .ok), ["eyes", "look", "root"])
+        XCTAssertEqual(m.groups(state: .limit), ["root", "zz"])
+        XCTAssertEqual(m.groups(state: .fail), ["root"])
+    }
+}
+
+final class MenuBarDisplayTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func avail(_ used: Double) -> MenuBarCandidate {
+        MenuBarCandidate(state: .available,
+                         snapshot: Snapshot(windows: [UsageWindow(label: "5時間枠", usedPercent: used, resetsAt: now.addingTimeInterval(3600))], fetchedAt: now),
+                         fetchFailed: false)
+    }
+    func limited(_ minutes: Double) -> MenuBarCandidate {
+        MenuBarCandidate(state: .limited(until: now.addingTimeInterval(minutes * 60)), snapshot: nil, fetchFailed: false)
+    }
+
+    func testLimitedShowsEarliestOnly() {
+        let d = makeMenuBarDisplay([limited(300), limited(43), avail(10)])
+        XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60)))
+        XCTAssertEqual(d.text(now: now), "あと43分")
+        XCTAssertEqual(d.characterState, .limit)
+    }
+
+    func testNoLimitShowsLowestRemaining() {
+        let d = makeMenuBarDisplay([avail(13), avail(38), avail(5)])
+        XCTAssertEqual(d, .remaining(percent: 62))
+        XCTAssertEqual(d.text(now: now), "残り62%")
+        XCTAssertEqual(d.characterState, .ok)
+    }
+
+    func testFailedItemsNumbersAreNotUsed() {
+        var old = avail(90); old.fetchFailed = true
+        let stale = MenuBarCandidate(state: .stale(since: now), snapshot: avail(95).snapshot, fetchFailed: false)
+        XCTAssertEqual(makeMenuBarDisplay([old, stale, avail(40)]), .remaining(percent: 60))
+    }
+
+    func testAllFailedShowsCharacterOnly() {
+        var old = avail(90); old.fetchFailed = true
+        let d = makeMenuBarDisplay([old, MenuBarCandidate(state: .unset, snapshot: nil, fetchFailed: false)])
+        XCTAssertEqual(d, .failed)
+        XCTAssertNil(d.text(now: now))
+        XCTAssertEqual(d.characterState, .fail)
+        XCTAssertEqual(makeMenuBarDisplay([]), .failed)
+    }
+
+    func testCreditUsedOnlyWhenNoPercent() {
+        let credit = { (amount: Double) in
+            MenuBarCandidate(state: .available, snapshot: Snapshot(credit: CreditBalance(amount: amount, currency: "USD"), fetchedAt: self.now), fetchFailed: false)
+        }
+        XCTAssertEqual(makeMenuBarDisplay([credit(95.5), credit(18.4)]), .credit(text: "$18.40"))
+        XCTAssertEqual(makeMenuBarDisplay([credit(18.4), avail(70)]), .remaining(percent: 30))
+    }
+
+    func testDaysOnlyWhenOverOneDay() {
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval((2 * 24 + 5) * 3600), now: now), "あと2日")
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(23 * 3600 + 59 * 60), now: now), "あと23時間59分")
+        XCTAssertEqual(formatRemainingShort(until: now.addingTimeInterval(24 * 3600), now: now), "あと1日")
+    }
+}

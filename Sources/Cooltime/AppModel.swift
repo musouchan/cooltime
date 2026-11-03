@@ -34,6 +34,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var now: Date
     /// 管理画面で選ばれているアカウント。
     @Published var selected: UUID?
+    /// 使用状況の記録。Mac の中だけに保存する。
+    @Published private(set) var history: UsageHistory
     private var dismissed: Set<String> = []
     /// 自動更新を最後に行った時刻と、最後に見た合図の時刻。
     private var lastAuto: [UUID: Date] = [:]
@@ -46,7 +48,9 @@ final class AppModel: ObservableObject {
     init(clock: Clock = SystemClock()) {
         self.clock = clock
         self.now = clock.now
+        self.history = UsageHistory(startedAt: clock.now)
         load()
+        loadHistory()
         autoDetect()
         reloadFiles()
         lastPing = pingDate()
@@ -65,6 +69,31 @@ final class AppModel: ObservableObject {
         reloadFiles()
         now = clock.now
         autoRefresh()
+        let before = history.open.count
+        history.closeFinished(now: clock.now)
+        if history.open.count != before { saveHistory() }
+    }
+
+    /// 取得できた数字を、記録に足す。
+    private func record(_ account: Account, _ snapshot: Snapshot) {
+        if history.observe(account: account.id, serviceID: account.serviceID, snapshot: snapshot, now: clock.now) {
+            saveHistory()
+        }
+    }
+
+    /// 振り返りに出す名前。
+    func displayName(_ id: UUID) -> String {
+        items.first { $0.id == id }?.title ?? "削除したサービス"
+    }
+
+    private func loadHistory() {
+        guard let data = try? Data(contentsOf: Paths.history),
+              let h = try? JSONDecoder.cooltime.decode(UsageHistory.self, from: data) else { return }
+        history = h
+    }
+
+    private func saveHistory() {
+        if let data = try? JSONEncoder.cooltime.encode(history) { try? data.write(to: Paths.history, options: .atomic) }
     }
 
     /// Claude Code（ターミナルでもデスクトップの Code タブでも）と Codex は、使うと記録のファイルを更新する。
@@ -164,9 +193,24 @@ final class AppModel: ObservableObject {
         return .distantFuture
     }
 
-    var menuBarPick: MenuBarPick? {
-        pickForMenuBar(subscriptions.map { (id: $0.id, state: $0.state) })
+    /// メニューバーに出すもの（キャラクターと、一番大事な1つの数字）。
+    var menuBarDisplay: MenuBarDisplay {
+        makeMenuBarDisplay(items.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil) })
     }
+
+    /// メニューバーにマウスを乗せたときの説明。
+    var menuBarTooltip: String {
+        let list = limited
+        if list.isEmpty { return "制限中のものはありません" }
+        return list.map { i in
+            let label = i.snapshot?.windows.filter { $0.isExhausted }
+                .max { ($0.resetsAt ?? .distantPast) < ($1.resetsAt ?? .distantPast) }?.label
+            return "\(i.title)\(label.map { " · \($0)" } ?? "")  \(formatRemaining(until: untilDate(i), now: now))"
+        }.joined(separator: "\n")
+    }
+
+    /// 管理画面の「キャラクター」の行（アカウントではないので、決まった ID で選ぶ）。
+    static let characterPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
 
     // MARK: 取得
 
@@ -177,6 +221,7 @@ final class AppModel: ObservableObject {
             if let s = try? Fetchers.readClaude(slot: a.slot),
                s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
                 snapshots[a.id] = s
+                record(a, s)
                 errors[a.id] = nil
                 save()
             }
@@ -194,6 +239,7 @@ final class AppModel: ObservableObject {
             // 古い記録で、新しいデータを上書きしない。
             if result.snapshot.fetchedAt >= (snapshots[account.id]?.fetchedAt ?? .distantPast) {
                 snapshots[account.id] = result.snapshot
+                record(account, result.snapshot)
             }
             apply(result.identity, to: account.id)
             errors[account.id] = result.warning
@@ -253,6 +299,8 @@ final class AppModel: ObservableObject {
 
     func remove(_ a: Account) {
         Keychain.delete(a.id)
+        history.forget(account: a.id)
+        saveHistory()
         accounts.removeAll { $0.id == a.id }
         dismissed.insert(a.serviceID)
         snapshots[a.id] = nil

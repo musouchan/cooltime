@@ -5,6 +5,7 @@ import CooltimeCore
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var updater: Updater
+    @EnvironmentObject var actions: AppActions
     @State private var adding = false
     @State private var pendingDelete: Account?
 
@@ -18,6 +19,9 @@ struct ManageView: View {
                     Section("API・クレジット") {
                         ForEach(model.items.filter { $0.service.kind == .credit }) { sidebarRow($0) }
                     }
+                    Section("表示") {
+                        Label("キャラクター", systemImage: "face.smiling").tag(AppModel.characterPane)
+                    }
                 }
                 Divider()
                 HStack {
@@ -25,16 +29,25 @@ struct ManageView: View {
                     Button {
                         pendingDelete = model.accounts.first(where: { $0.id == model.selected })
                     } label: { Image(systemName: "minus") }
-                        .disabled(model.selected == nil).accessibilityLabel("削除")
+                        .disabled(!model.accounts.contains { $0.id == model.selected }).accessibilityLabel("削除")
                     Spacer()
                     Text(versionText).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 .padding(8)
+                HStack {
+                    Button { actions.openReview() } label: { Label("振り返り", systemImage: "chart.bar") }
+                    Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
+                        .help("すべてのサービスを今すぐ更新します（通信します）")
+                    Spacer()
+                }
+                .padding(.horizontal, 8).padding(.bottom, 6)
                 if updater.canUpdate { updateBar }
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
-            if let id = model.selected, let item = model.items.first(where: { $0.id == id }) {
+            if model.selected == AppModel.characterPane {
+                CharacterSettingsView()
+            } else if let id = model.selected, let item = model.items.first(where: { $0.id == id }) {
                 DetailView(item: item).id(id)
             } else {
                 Text(model.accounts.isEmpty ? "「＋」から、使っているサービスを追加してください" : "サービスを選んでください")
@@ -42,12 +55,6 @@ struct ManageView: View {
             }
         }
         .sheet(isPresented: $adding) { AddServiceView { model.selected = $0 } }
-        .toolbar {
-            ToolbarItem {
-                Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
-                    .help("すべてのサービスを今すぐ更新します（通信します）")
-            }
-        }
         .confirmationDialog("このサービスを削除しますか？", isPresented: Binding(get: { pendingDelete != nil },
                                                                       set: { if !$0 { pendingDelete = nil } }),
                             titleVisibility: .visible, presenting: pendingDelete) { a in
@@ -259,6 +266,12 @@ private struct DetailView: View {
                 GridRow {
                     Text("名前")
                     TextField("例: Max / 会社用", text: $draft.name)
+                }
+                GridRow {
+                    Text("月額（円）")
+                    TextField("任意。振り返りで、払っている額と並べて見られます", text: Binding(
+                        get: { draft.monthlyPrice.map(String.init) ?? "" },
+                        set: { draft.monthlyPrice = Int($0.filter(\.isNumber)) }))
                 }
                 if item.service.method == .statuslineFile {
                     GridRow {
