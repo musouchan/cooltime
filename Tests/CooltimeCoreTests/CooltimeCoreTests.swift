@@ -98,7 +98,7 @@ final class ParserTests: XCTestCase {
     }
 
     func testClaudeStatuslineWithoutLimitsIsRejected() {
-        XCTAssertThrowsError(try ClaudeStatusline.parse(d("{"model":{}}"), fetchedAt: at))
+        XCTAssertThrowsError(try ClaudeStatusline.parse(d(#"{"model":{}}"#), fetchedAt: at))
     }
 
     func testCodex() throws {
@@ -127,14 +127,14 @@ final class ParserTests: XCTestCase {
     }
 
     func testVercelAndDeepSeek() throws {
-        XCTAssertEqual(try VercelAIGateway.parse(d("{"balance":"95.50","total_used":"4"}"), fetchedAt: at).credit?.amount, 95.5)
-        let ds = try DeepSeek.parse(d("{"balance_infos":[{"currency":"USD","total_balance":"12.00"}]}"), fetchedAt: at)
+        XCTAssertEqual(try VercelAIGateway.parse(d(#"{"balance":"95.50","total_used":"4"}"#), fetchedAt: at).credit?.amount, 95.5)
+        let ds = try DeepSeek.parse(d(#"{"balance_infos":[{"currency":"USD","total_balance":"12.00"}]}"#), fetchedAt: at)
         XCTAssertEqual(formatMoney(ds.credit!), "$12.00")
     }
 
     func testOpenRouterRequiresLimit() throws {
-        XCTAssertThrowsError(try OpenRouter.parse(d("{"data":{"limit":null,"limit_remaining":null}}"), fetchedAt: at))
-        let s = try OpenRouter.parse(d("{"data":{"limit":20,"limit_remaining":18.4,"limit_reset":"monthly"}}"), fetchedAt: at)
+        XCTAssertThrowsError(try OpenRouter.parse(d(#"{"data":{"limit":null,"limit_remaining":null}}"#), fetchedAt: at))
+        let s = try OpenRouter.parse(d(#"{"data":{"limit":20,"limit_remaining":18.4,"limit_reset":"monthly"}}"#), fetchedAt: at)
         XCTAssertEqual(s.credit?.amount, 18.4)
         XCTAssertNotNil(s.credit?.resetsAt)
     }
@@ -156,15 +156,15 @@ final class IdentityTests: XCTestCase {
         {"oauthAccount":{"emailAddress":"me@example.com","organizationName":"Me"},"projects":{}}
         """))
         XCTAssertEqual(id, AccountIdentity(email: "me@example.com"))
-        XCTAssertNil(ClaudeAccount.parse(d("{"projects":{}}")))
+        XCTAssertNil(ClaudeAccount.parse(d(#"{"projects":{}}"#)))
     }
 
     func testCodexAccountMapsPlanToType() {
-        let plus = CodexAccount.parse(d("{"id":3,"result":{"account":{"type":"chatgpt","email":"a@b.c","planType":"plus"}}}"))
+        let plus = CodexAccount.parse(d(#"{"id":3,"result":{"account":{"type":"chatgpt","email":"a@b.c","planType":"plus"}}}"#))
         XCTAssertEqual(plus, AccountIdentity(email: "a@b.c", plan: "Plus", type: .personal))
-        let team = CodexAccount.parse(d("{"result":{"account":{"planType":"team"}}}"))
+        let team = CodexAccount.parse(d(#"{"result":{"account":{"planType":"team"}}}"#))
         XCTAssertEqual(team?.type, .business)
-        XCTAssertNil(CodexAccount.parse(d("{"error":{"message":"x"}}")))
+        XCTAssertNil(CodexAccount.parse(d(#"{"error":{"message":"x"}}"#)))
     }
 }
 
@@ -176,18 +176,18 @@ final class StatuslineConfigTests: XCTestCase {
     func testAddsToEmptyOrMissingFile() throws {
         let c = try StatuslineConfig.plan(existing: nil, scriptPath: script)
         let sl = obj(c.newData)["statusLine"] as! [String: Any]
-        XCTAssertEqual(sl["command"] as? String, ""\(script)"")
+        XCTAssertEqual(sl["command"] as? String, "\"\(script)\"")
         XCTAssertFalse(c.alreadySet)
     }
 
     func testKeepsOtherSettingsAndWrapsExistingStatusline() throws {
-        let existing = d("{"theme":"dark","statusLine":{"type":"command","command":"echo it's me","padding":2}}")
+        let existing = d(#"{"theme":"dark","statusLine":{"type":"command","command":"echo it's me","padding":2}}"#)
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let root = obj(c.newData)
         XCTAssertEqual(root["theme"] as? String, "dark")
         let sl = root["statusLine"] as! [String: Any]
         XCTAssertEqual(sl["padding"] as? Int, 2)
-        XCTAssertTrue((sl["command"] as! String).hasPrefix(""\(script)" '"))
+        XCTAssertTrue((sl["command"] as! String).hasPrefix("\"\(script)\" '"))
         XCTAssertEqual(c.before, "echo it's me")
         XCTAssertTrue(StatuslineConfig.isSet(c.newData, scriptPath: script))
     }
@@ -199,12 +199,12 @@ final class StatuslineConfigTests: XCTestCase {
     }
 
     func testRevertRestoresOriginal() throws {
-        let existing = d("{"statusLine":{"type":"command","command":"echo it's me"}}")
+        let existing = d(#"{"statusLine":{"type":"command","command":"echo it's me"}}"#)
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let back = try StatuslineConfig.revert(existing: c.newData, scriptPath: script)!
         XCTAssertEqual((obj(back)["statusLine"] as! [String: Any])["command"] as? String, "echo it's me")
 
-        let fresh = try StatuslineConfig.plan(existing: d("{"a":1}"), scriptPath: script)
+        let fresh = try StatuslineConfig.plan(existing: d(#"{"a":1}"#), scriptPath: script)
         let none = try StatuslineConfig.revert(existing: fresh.newData, scriptPath: script)!
         XCTAssertNil(obj(none)["statusLine"])
         XCTAssertEqual(obj(none)["a"] as? Int, 1)
@@ -212,8 +212,8 @@ final class StatuslineConfigTests: XCTestCase {
 
     func testRefusesToTouchUnreadableOrUnknownShapes() {
         XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("not json"), scriptPath: script))
-        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("{"statusLine":"x"}"), scriptPath: script))
-        XCTAssertNil(try StatuslineConfig.revert(existing: d("{"statusLine":{"type":"command","command":"mine"}}"), scriptPath: script))
+        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d(#"{"statusLine":"x"}"#), scriptPath: script))
+        XCTAssertNil(try StatuslineConfig.revert(existing: d(#"{"statusLine":{"type":"command","command":"mine"}}"#), scriptPath: script))
     }
 }
 
@@ -906,7 +906,7 @@ final class ManualImportTests: XCTestCase {
         XCTAssertEqual(records[0].source, "公式, Billing")
         XCTAssertNil(records[0].resetsAt)
         XCTAssertEqual(records[1].remaining, 0)
-        XCTAssertEqual(records[1].source, "Usage "Quota"")
+        XCTAssertEqual(records[1].source, #"Usage "Quota""#)
         XCTAssertNotNil(records[1].resetsAt)
     }
 
@@ -916,7 +916,8 @@ final class ManualImportTests: XCTestCase {
                                                       now: later))
         XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,not-a-date,official",
                                                       now: later))
-        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,2026-11-05T12:00:00Z,"bad",
+        XCTAssertThrowsError(try ManualImport.parseCSV(#"remaining,unit,observed_at,source
+1,USD,2026-11-05T12:00:00Z,"bad,"#
                                                       now: later))
     }
 }
