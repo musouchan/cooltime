@@ -1001,7 +1001,8 @@ final class TavilyUsageTests: XCTestCase {
     let at = Date(timeIntervalSince1970: 1_800_000_000)
     func d(_ s: String) -> Data { s.data(using: .utf8)! }
     func testParsesOfficialKeyPlanAndPaygoUsage() throws {
-        let snapshot = try TavilyUsage.parse(d("""{\"key\":{\"usage\":150,\"limit\":1000},\"account\":{\"plan_usage\":500,\"plan_limit\":15000,\"paygo_usage\":25,\"paygo_limit\":100}}"""), fetchedAt: at)
+        let json = #"{"key":{"usage":150,"limit":1000},"account":{"plan_usage":500,"plan_limit":15000,"paygo_usage":25,"paygo_limit":100}}"#
+        let snapshot = try TavilyUsage.parse(d(json), fetchedAt: at)
         XCTAssertEqual(snapshot.windows.count, 3)
         XCTAssertEqual(snapshot.windows[0].remainingCount, 850)
         XCTAssertEqual(snapshot.windows[1].usedPercent ?? 0, 100.0 / 30.0, accuracy: 0.001)
