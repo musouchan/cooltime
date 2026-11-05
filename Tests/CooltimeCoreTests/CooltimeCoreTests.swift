@@ -916,9 +916,10 @@ final class ManualImportTests: XCTestCase {
                                                       now: later))
         XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,not-a-date,official",
                                                       now: later))
-        XCTAssertThrowsError(try ManualImport.parseCSV(#"remaining,unit,observed_at,source
-1,USD,2026-11-05T12:00:00Z,"bad,"#
-                                                      now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("""
+        remaining,unit,observed_at,source
+        1,USD,2026-11-05T12:00:00Z,"bad,
+        """, now: later))
     }
 }
 
