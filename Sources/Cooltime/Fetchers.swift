@@ -93,6 +93,10 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "sheet-14":
+                // Cursor Admin API はチーム単位。残りの契約枠とは別の当期支出。
+                data = try await postCursorTeamSpend(key: key)
+                return FetchResult(snapshot: try CursorTeamSpend.parse(data, fetchedAt: now), identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
@@ -151,6 +155,29 @@ enum Fetchers {
             default:
                 throw ParseError.unsupported("未対応のサービスです")
             }
+        }
+    }
+
+    private static func postCursorTeamSpend(key: String) async throws -> Data {
+        guard !key.contains(":") && !key.contains("\n") && !key.contains("\r") else {
+            throw ParseError.invalid("Cursor Teams APIキーの形式が不正です")
+        }
+        var req = URLRequest(url: URL(string: CursorTeamSpend.endpoint)!, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.setValue("Basic " + Data((key + ":").utf8).base64EncodedString(), forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data(#"{"page":1,"pageSize":1000}"#.utf8)
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        do {
+            let (data, response) = try await URLSession(configuration: cfg).data(for: req)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else { throw FetchError.http(code) }
+            return data
+        } catch let error as FetchError {
+            throw error
+        } catch {
+            throw FetchError.network
         }
     }
 
