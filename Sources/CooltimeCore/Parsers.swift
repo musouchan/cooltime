@@ -452,3 +452,17 @@ public enum Tripo {
 
     private static func formatNumber(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v) }
 }
+
+
+// MARK: - Poe Usage API
+
+public enum PoeBalance {
+    /// GET https://api.poe.com/usage/current_balance returns the account's current points.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let raw = number(root["current_point_balance"]), raw >= 0, raw.rounded() == raw else {
+            throw ParseError.invalid("current_point_balance がありません")
+        }
+        return Snapshot(credit: CreditBalance(amount: raw, currency: "points"), fetchedAt: fetchedAt)
+    }
+}

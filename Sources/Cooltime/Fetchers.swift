@@ -148,6 +148,9 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-71":
+                data = try await get("https://api.poe.com/usage/current_balance", headers: bearer(key))
+                return FetchResult(snapshot: try PoeBalance.parse(data, fetchedAt: now), identity: nil)
             case "sheet-121":
                 data = try await post("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats",
                                       headers: ["x-api-key": key, "Content-Type": "application/json", "Accept": "application/json"])
