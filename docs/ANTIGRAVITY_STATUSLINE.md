@@ -31,7 +31,7 @@ The statusline helper requires `jq` 1.6 or newer to filter the JSON input withou
 
 ## Data and privacy
 
-The official statusline input includes session metadata as well as a `quota` object. The script extracts only `quota` directly from stdin with macOS `plutil`; it never writes the full input to disk. The saved file is `~/Library/Application Support/Cooltime/antigravity-quota.json`, with owner-only permissions. Cooltime reads only this file. Prompts, transcript paths, project paths, email addresses, tokens, and API keys are not stored or sent.
+The official statusline input includes session metadata as well as a `quota` object. The script extracts only `quota` directly from stdin with `jq` 1.6 or newer; it never writes the full input to disk. The saved file is `~/Library/Application Support/Cooltime/antigravity-quota.json`, with owner-only permissions. Cooltime reads only this file. Prompts, transcript paths, project paths, email addresses, tokens, and API keys are not stored or sent.
 
 Quota buckets are displayed independently. A documented `remaining_fraction` becomes a used percentage; an explicit `remaining_amount` is shown as a count. `reset_time` is used only when supplied. Cooltime does not turn estimated cost or context-window usage into remaining quota. The last local value remains visible when Antigravity CLI is not running; its file modification time shows when it was last refreshed.
 
