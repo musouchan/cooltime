@@ -36,6 +36,8 @@ enum Paths {
     /// 使用状況の記録（枠の%と時刻だけ。会話の中身は持たない）。
     static var history: URL { dir.appendingPathComponent("history.json") }
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
+    /// Antigravity CLI statusline script writes only the quota object here (user opt-in).
+    static var antigravityStatusline: URL { dir.appendingPathComponent("antigravity-quota.json") }
     /// Claude Code の Stop フックが更新する合図のファイル（中身は空）。
     static var claudePing: URL { dir.appendingPathComponent("claude-ping") }
 }
@@ -63,6 +65,13 @@ enum Fetchers {
         return try ClaudeStatusline.parse(data, fetchedAt: mtime)
     }
 
+    static func readAntigravity() throws -> Snapshot {
+        let url = Paths.antigravityStatusline
+        guard let data = try? Data(contentsOf: url) else { throw FetchError.noFile }
+        let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        return try AntigravityStatusline.parse(data, fetchedAt: mtime)
+    }
+
     /// 通信を伴う取得。更新ボタンのときだけ呼ぶ。送り先は各サービスの公式の窓口だけ。
     static func fetch(account: Account, service: ServiceDef) async throws -> FetchResult {
         let now = Date()
@@ -70,6 +79,10 @@ enum Fetchers {
         case .manual:
             throw ParseError.unsupported("手動記録サービスは自動取得しません")
         case .statuslineFile:
+            if service.id == "sheet-11" {
+                // Antigravity CLI writes the official statusline quota JSON locally; no network/API call.
+                return FetchResult(snapshot: try readAntigravity(), identity: nil)
+            }
             // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
             // 取れなければ、ステータスラインの記録に戻る。
             if account.slot == "default" {
