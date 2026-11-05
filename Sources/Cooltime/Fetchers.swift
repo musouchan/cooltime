@@ -133,11 +133,11 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
-            case "copilot":
+            case "copilot", "spark":
                 let userData = try await get("https://api.github.com/user", headers: githubHeaders(key))
                 let login = try GitHubUser.login(userData)
                 data = try await get(CopilotCredits.path(login: login, now: now), headers: githubHeaders(key))
-                let allowance = PlanCatalog.option(serviceID: "copilot", id: account.planID)?.monthlyCredits
+                let allowance = PlanCatalog.option(serviceID: service.id, id: account.planID)?.monthlyCredits
                 return FetchResult(snapshot: try CopilotCredits.parse(data, allowance: allowance, fetchedAt: now),
                                    identity: nil)
             case "synthesia":
