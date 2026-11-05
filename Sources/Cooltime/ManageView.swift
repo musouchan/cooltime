@@ -259,6 +259,10 @@ private struct DetailView: View {
                         Text(formatMoney(c)).font(.title3).fontWeight(.semibold).monospacedDigit()
                     }
                 }
+                if let reset = snap.credit?.resetsAt, item.service.method == .manual {
+                    Text("利用者が記録した更新日時: \(formatClock(reset, now: model.now))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if let note = snap.credit?.note, item.service.method == .manual {
                     Text(note).font(.caption).foregroundStyle(.secondary)
                     Text("手動で確認した過去の記録です。現在の残量は保証されません。")
