@@ -1,9 +1,9 @@
 # Cooltime manual-only providers (2026-11-05)
 
-This is the manual entry fallback for the remaining 165 manual-only services. IDs remain tied to the **original sheet row** and must **not** be renumbered: stored accounts reference them. Google Antigravity (`sheet-11`) is now a separate local statusline integration.
+This is the manual entry fallback for the remaining 164 manual-only services. IDs remain tied to the **original sheet row** and must **not** be renumbered: stored accounts reference them. Google Antigravity (`sheet-11`) is now a separate local statusline integration.
 
 ## What this does
-- Search and add any of the 165 manual-only services.
+- Search and add any of the 164 manual-only services.
 - Save a numeric balance, unit, observation time, and source.
 - Optionally save a reset date **only when actually shown by the provider**.
 - Import one or many rows from a user-provided UTF-8 CSV (up to 1 MB and at most 500 observations per import).
@@ -27,5 +27,5 @@ GitHub Actions on macOS runs `swift test` and the full app build. **An automated
 ## Further work
 - Confirm individual provider APIs / CLI support and replace manual-only entries one by one.
 - Add audit and export UI for observation history (records are already persisted).
-- Integrate PR #13 Spark independently. The combined catalog remains 185 services after the Antigravity promotion (19 local/API integrations + 165 manual-only entries + Spark).
+- Integrate PR #13 Spark independently. The combined catalog remains 185 services after the Antigravity promotion (20 local/API integrations + 164 manual-only entries + Spark).
 - A single manual record is never account-wide verified; show observation date and source when displayed.
