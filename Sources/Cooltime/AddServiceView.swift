@@ -14,7 +14,7 @@ struct AddServiceView: View {
             Text("サービスの追加").font(.title3).fontWeight(.semibold)
             Text("使っているものだけ選んでください。追加するまで、通信はしません。")
                 .font(.callout).foregroundStyle(.secondary)
-            TextField("サービス名を検索（185件）", text: $search)
+            TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
             List(Catalog.all.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { s in
                 Toggle(isOn: Binding(get: { picked.contains(s.id) },
