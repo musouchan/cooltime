@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 163)
+        XCTAssertEqual(ManualCatalog.all.count, 162)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -1011,5 +1011,34 @@ final class TavilyUsageTests: XCTestCase {
     func testRejectsResponseWithoutUsageLimits() {
         XCTAssertThrowsError(try TavilyUsage.parse(d(#"{"key":{"usage":3,"limit":null},"account":{}}"#), fetchedAt: at))
         XCTAssertThrowsError(try TavilyUsage.parse(d("not json"), fetchedAt: at))
+    }
+}
+
+
+
+final class ApolloCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialCreditPoolsAndCycleEnd() throws {
+        let fixture = #"{"credit_usage_stats":{"lead_credit":{"limit":10000,"consumed":2500,"left_over":7500},"ai_credit":{"limit":2000,"consumed":75,"left_over":1925},"dialer":{"limit":500,"consumed":12,"left_over":488},"excluded":{"limit":0,"consumed":0,"left_over":0}},"current_credit_cycle":{"start_date":"2026-04-01T00:00:00.000Z","end_date":"2026-05-01T00:00:00.000Z"}}"#
+        let snapshot = try ApolloCredits.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 3)
+        let lead = try XCTUnwrap(snapshot.windows.first { $0.label == "リードクレジット" })
+        XCTAssertEqual(lead.remainingCount, 7500)
+        XCTAssertEqual(lead.usedPercent, 25)
+        XCTAssertEqual(lead.resetsAt, Date(timeIntervalSince1970: 1_777_593_600))
+        XCTAssertEqual(snapshot.windows.first { $0.label.contains("分") }?.remainingCount, 488)
+    }
+
+    func testRejectsMissingMalformedAndNegativeCreditFields() {
+        for fixture in [
+            "{}",
+            #"{"credit_usage_stats":{"lead_credit":{"limit":5,"consumed":2}},"current_credit_cycle":{}}"#,
+            #"{"credit_usage_stats":{"lead_credit":{"limit":5,"consumed":-2,"left_over":7}},"current_credit_cycle":{}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try ApolloCredits.parse(d(fixture), fetchedAt: at))
+        }
     }
 }

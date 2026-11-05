@@ -148,6 +148,10 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-121":
+                data = try await post("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats",
+                                      headers: ["x-api-key": key, "Content-Type": "application/json", "Accept": "application/json"])
+                return FetchResult(snapshot: try ApolloCredits.parse(data, fetchedAt: now), identity: nil)
             case "sheet-103":
                 data = try await get("https://api.tavily.com/usage", headers: bearer(key))
                 return FetchResult(snapshot: try TavilyUsage.parse(data, fetchedAt: now), identity: nil)
@@ -179,6 +183,24 @@ enum Fetchers {
     }
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }
+
+    private static func post(_ url: String, headers: [String: String]) async throws -> Data {
+        var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        do {
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let code = (res as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else { throw FetchError.http(code) }
+            return data
+        } catch let e as FetchError {
+            throw e
+        } catch {
+            throw FetchError.network
+        }
+    }
 
     private static func get(_ url: String, headers: [String: String]) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
