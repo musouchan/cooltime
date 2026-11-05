@@ -4,7 +4,8 @@
 set -eu
 umask 077
 
-quota=$(/usr/bin/plutil -extract quota json -o - - 2>/dev/null) || exit 0
+command -v jq >/dev/null 2>&1 || exit 0
+quota=$(jq -ce '.quota | select(type == "object" and length > 0)' 2>/dev/null) || exit 0
 [ -n "$quota" ] || exit 0
 
 dir="$HOME/Library/Application Support/Cooltime"
