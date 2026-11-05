@@ -29,7 +29,7 @@ public enum PlanCatalog {
         case "codex":
             return [PlanOption(id: "plus", name: "Plus", usdMonthly: 20),
                     PlanOption(id: "pro", name: "Pro", usdMonthly: 200)]
-        case "copilot":
+        case "copilot", "spark":
             // 公式の「月の AI クレジット」（基本＋柔軟枠の合計）。柔軟枠は変わりうるので目安。
             return [PlanOption(id: "pro", name: "Pro", usdMonthly: 10, monthlyCredits: 1_500),
                     PlanOption(id: "pro-plus", name: "Pro+", usdMonthly: 39, monthlyCredits: 7_000),
