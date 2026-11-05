@@ -223,8 +223,13 @@ final class AppModel: ObservableObject {
     func reloadFiles() {
         for a in accounts where Catalog.service(a.serviceID)?.method == .statuslineFile {
             // /usage とステータスラインの、新しい方を使う。
-            if let s = try? Fetchers.readClaude(slot: a.slot),
-               s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
+            let local: Snapshot?
+            if a.serviceID == "sheet-11" {
+                local = try? Fetchers.readAntigravity()
+            } else {
+                local = try? Fetchers.readClaude(slot: a.slot)
+            }
+            if let s = local, s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
                 snapshots[a.id] = s
                 record(a, s)
                 errors[a.id] = nil
