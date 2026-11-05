@@ -330,17 +330,23 @@ public enum CopilotCredits {
         return utcCalendar.date(byAdding: .month, value: 1, to: start)!
     }
 
+    /// GitHub の公式レポートが返す消費量であり、契約の正確な残高ではない。
+    /// 未知の単位や数量欠損はゼロにせず、取得失敗として扱う。
     public static func parse(_ data: Data, allowance: Int?, fetchedAt: Date) throws -> Snapshot {
-        guard let allowance, allowance > 0 else { throw ParseError.unsupported("プランを選ぶと、残りが出ます") }
+        guard let allowance, allowance > 0 else { throw ParseError.unsupported("プランを選ぶと使用量から残りの目安を算出できます") }
         let r = try json(data)
         guard let items = r["usageItems"] as? [[String: Any]] else { throw ParseError.invalid("usageItems がありません") }
-        let used = items
-            .filter { ($0["unitType"] as? String) == "ai-credits" }
-            .reduce(0.0) { $0 + (number($1["grossQuantity"]) ?? 0) }
-        let w = UsageWindow(label: "月のAIクレジット",
+        var used = 0.0
+        for item in items where (item["unitType"] as? String) == "ai-credits" {
+            guard let quantity = number(item["grossQuantity"]), quantity.isFinite, quantity >= 0
+            else { throw ParseError.invalid("AI credit の使用数量が不正です") }
+            used += quantity
+        }
+        guard used.isFinite else { throw ParseError.invalid("AI credit の使用量が不正です") }
+        let w = UsageWindow(label: "月のAIクレジット（プラン基準の推定残量）",
                             usedPercent: max(0, min(100, used / Double(allowance) * 100)),
                             remainingCount: max(0, Double(allowance) - used),
-                            resetsAt: nextReset(after: fetchedAt))
+                            resetsAt: nil)
         return Snapshot(windows: [w], fetchedAt: fetchedAt)
     }
 
