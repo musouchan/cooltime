@@ -37,7 +37,13 @@ func parseDate(_ v: Any?) -> Date? {
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = f.date(from: s) { return d }
         f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
+        if let d = f.date(from: s) { return d }
+        // 日付だけ（例: "2026-12-01"）は、その日の0時（UTC）
+        let day = DateFormatter()
+        day.locale = Locale(identifier: "en_US_POSIX")
+        day.timeZone = TimeZone(identifier: "UTC")
+        day.dateFormat = "yyyy-MM-dd"
+        return day.date(from: s)
     }
     return nil
 }
@@ -187,5 +193,109 @@ public enum DeepSeek {
         }
         return Snapshot(credit: CreditBalance(amount: total, currency: (info["currency"] as? String) ?? "USD"),
                         fetchedAt: fetchedAt)
+    }
+}
+
+// MARK: - 追加のAPI（スプレッドシートの調査どおり。実機で要確認）
+//
+// 公式の資料を、この開発環境から読めなかったため、入口と項目名は、調査表に書かれたものと、
+// 一般に知られている形に基づく。応答の形が違うときは、推測せずに、読み取れなかったことを画面に出す。
+
+public enum StabilityAI {
+    /// GET https://api.stability.ai/v1/user/balance → {"credits": 12.5}
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let c = number(r["credits"]) else { throw ParseError.invalid("credits がありません") }
+        return Snapshot(credit: CreditBalance(amount: c, currency: "credits"), fetchedAt: fetchedAt)
+    }
+}
+
+public enum LumaAI {
+    /// GET https://api.lumalabs.ai/dream-machine/v1/credits → {"credit_balance": 1234}（USD のセント）
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let cents = number(r["credit_balance"]) else { throw ParseError.invalid("credit_balance がありません") }
+        return Snapshot(credit: CreditBalance(amount: cents / 100, currency: "USD"), fetchedAt: fetchedAt)
+    }
+}
+
+public enum RunwayAPI {
+    /// GET https://api.dev.runwayml.com/v1/organization（Authorization: Bearer、X-Runway-Version）→ {"creditBalance": 1000, ...}
+    public static let version = "2024-11-06"
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let c = number(r["creditBalance"]) else { throw ParseError.invalid("creditBalance がありません") }
+        return Snapshot(credit: CreditBalance(amount: c, currency: "credits"), fetchedAt: fetchedAt)
+    }
+}
+
+public enum Photoroom {
+    /// GET https://image-api.photoroom.com/v1/account（x-api-key）→ {"credits": {"available": 9, "subscription": 10}}
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let credits = r["credits"] as? [String: Any], let available = number(credits["available"]) else {
+            throw ParseError.invalid("credits.available がありません")
+        }
+        return Snapshot(credit: CreditBalance(amount: available, currency: "credits"), fetchedAt: fetchedAt)
+    }
+}
+
+public enum Meshy {
+    /// GET https://api.meshy.ai/openapi/v1/balance → {"balance": 1234}。月のリセット時刻の項目があれば、それも使う。
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let b = number(r["balance"]) else { throw ParseError.invalid("balance がありません") }
+        let reset = ["monthly_resets_at", "monthlyResetsAt", "reset_at"].lazy.compactMap { parseDate(r[$0]) }.first
+        return Snapshot(credit: CreditBalance(amount: b, currency: "credits", resetsAt: reset), fetchedAt: fetchedAt)
+    }
+}
+
+public enum Apify {
+    /// GET https://api.apify.com/v2/users/me/limits →
+    /// {"data": {"monthlyUsageCycle": {"startAt", "endAt"}, "limits": {"maxMonthlyUsageUsd"}, "current": {"monthlyUsageUsd"}}}
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        let r = (root["data"] as? [String: Any]) ?? root
+        guard let limits = r["limits"] as? [String: Any], let max = number(limits["maxMonthlyUsageUsd"]), max > 0,
+              let current = r["current"] as? [String: Any], let used = number(current["monthlyUsageUsd"]) else {
+            throw ParseError.invalid("月の利用額と上限が見つかりません")
+        }
+        let end = ((r["monthlyUsageCycle"] as? [String: Any])?["endAt"]).flatMap(parseDate)
+        let w = UsageWindow(label: "月の利用額", usedPercent: used / max * 100, resetsAt: end)
+        return Snapshot(windows: [w], fetchedAt: fetchedAt)
+    }
+}
+
+public enum SerpAPI {
+    /// GET https://serpapi.com/account.json?api_key=… →
+    /// {"searches_per_month": N, "this_month_usage": n, "plan_searches_left": m, "plan_renewal_date": "…"}（無い項目は使わない）
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let limit = number(r["searches_per_month"]), limit > 0 else { throw ParseError.invalid("searches_per_month がありません") }
+        guard let left = number(r["plan_searches_left"]) ?? number(r["this_month_usage"]).map({ limit - $0 }) else {
+            throw ParseError.invalid("残りの検索回数がありません")
+        }
+        let w = UsageWindow(label: "月の検索回数", usedPercent: max(0, min(100, (limit - left) / limit * 100)),
+                            remainingCount: max(0, left), resetsAt: parseDate(r["plan_renewal_date"]))
+        return Snapshot(windows: [w], fetchedAt: fetchedAt)
+    }
+}
+
+public enum DeepL {
+    /// 無料のキー（":fx" で終わる）は api-free、それ以外は api。
+    public static func endpoint(forKey key: String) -> String {
+        key.hasSuffix(":fx") ? "https://api-free.deepl.com/v2/usage" : "https://api.deepl.com/v2/usage"
+    }
+
+    /// GET /v2/usage（Authorization: DeepL-Auth-Key）→ {"character_count": N, "character_limit": M}。期間の終わりがあれば、それも使う。
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let used = number(r["character_count"]), let limit = number(r["character_limit"]) else {
+            throw ParseError.invalid("character_count / character_limit がありません")
+        }
+        guard limit > 0 else { throw ParseError.unsupported("文字数の上限が無いプランは、残りを出せません") }
+        let w = UsageWindow(label: "月の文字数", usedPercent: used / limit * 100, remainingCount: max(0, limit - used),
+                            resetsAt: parseDate(r["end_time"]))
+        return Snapshot(windows: [w], fetchedAt: fetchedAt)
     }
 }

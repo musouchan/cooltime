@@ -732,3 +732,75 @@ final class CompactTextTests: XCTestCase {
         XCTAssertNil(MenuBarDisplay.failed.text(now: now, compact: true))
     }
 }
+
+final class MoreAPIParserTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testStabilityLumaRunwayPhotoroomMeshyBalances() throws {
+        XCTAssertEqual(try StabilityAI.parse(d(#"{"credits": 8.4}"#), fetchedAt: at).credit?.amount, 8.4)
+        let luma = try LumaAI.parse(d(#"{"credit_balance": 1234}"#), fetchedAt: at).credit
+        XCTAssertEqual(luma?.amount, 12.34)  // セント → ドル
+        XCTAssertEqual(luma?.currency, "USD")
+        XCTAssertEqual(try RunwayAPI.parse(d(#"{"creditBalance": 1000, "tier": {}}"#), fetchedAt: at).credit?.amount, 1000)
+        XCTAssertEqual(try Photoroom.parse(d(#"{"credits": {"available": 9, "subscription": 10}}"#), fetchedAt: at).credit?.amount, 9)
+        let meshy = try Meshy.parse(d(#"{"balance": 250, "monthly_resets_at": "2026-12-01T00:00:00Z"}"#), fetchedAt: at).credit
+        XCTAssertEqual(meshy?.amount, 250)
+        XCTAssertNotNil(meshy?.resetsAt)
+        XCTAssertNil(try Meshy.parse(d(#"{"balance": 250}"#), fetchedAt: at).credit?.resetsAt)  // 無ければ作らない
+    }
+
+    func testMissingFieldsAreErrorsNotGuesses() {
+        XCTAssertThrowsError(try StabilityAI.parse(d("{}"), fetchedAt: at))
+        XCTAssertThrowsError(try LumaAI.parse(d(#"{"balance": 1}"#), fetchedAt: at))
+        XCTAssertThrowsError(try RunwayAPI.parse(d("{}"), fetchedAt: at))
+        XCTAssertThrowsError(try Photoroom.parse(d(#"{"credits": {}}"#), fetchedAt: at))
+        XCTAssertThrowsError(try Meshy.parse(d("{}"), fetchedAt: at))
+        XCTAssertThrowsError(try Apify.parse(d(#"{"data": {}}"#), fetchedAt: at))
+        XCTAssertThrowsError(try SerpAPI.parse(d("{}"), fetchedAt: at))
+        XCTAssertThrowsError(try DeepL.parse(d("{}"), fetchedAt: at))
+    }
+
+    func testApifyMonthlyUsageAndCycleEnd() throws {
+        let s = try Apify.parse(d(#"""
+        {"data": {"monthlyUsageCycle": {"startAt": "2026-11-01T00:00:00.000Z", "endAt": "2026-11-30T23:59:59.999Z"},
+                  "limits": {"maxMonthlyUsageUsd": 50}, "current": {"monthlyUsageUsd": 12.5}}}
+        """#), fetchedAt: at)
+        XCTAssertEqual(s.windows[0].usedPercent ?? 0, 25, accuracy: 0.001)
+        XCTAssertNotNil(s.windows[0].resetsAt)
+    }
+
+    func testSerpAPIRemainingAndRenewalDate() throws {
+        let s = try SerpAPI.parse(d(#"{"searches_per_month": 100, "this_month_usage": 30, "plan_searches_left": 70, "plan_renewal_date": "2026-12-01"}"#), fetchedAt: at)
+        XCTAssertEqual(s.windows[0].usedPercent ?? 0, 30, accuracy: 0.001)
+        XCTAssertEqual(s.windows[0].remainingCount, 70)
+        XCTAssertEqual(availableSummary(s), "残り70")
+        XCTAssertNotNil(s.windows[0].resetsAt)
+        // 残りが無ければ、使用量から計算する
+        let t = try SerpAPI.parse(d(#"{"searches_per_month": 100, "this_month_usage": 100}"#), fetchedAt: at)
+        XCTAssertTrue(t.windows[0].isExhausted)
+        XCTAssertNil(t.windows[0].resetsAt)
+    }
+
+    func testDeepLUsageAndEndpoint() throws {
+        let s = try DeepL.parse(d(#"{"character_count": 250000, "character_limit": 500000}"#), fetchedAt: at)
+        XCTAssertEqual(s.windows[0].remainingPercent ?? 0, 50, accuracy: 0.001)
+        XCTAssertNil(s.windows[0].resetsAt)
+        XCTAssertThrowsError(try DeepL.parse(d(#"{"character_count": 1, "character_limit": 0}"#), fetchedAt: at))
+        XCTAssertEqual(DeepL.endpoint(forKey: "abc:fx"), "https://api-free.deepl.com/v2/usage")
+        XCTAssertEqual(DeepL.endpoint(forKey: "abc"), "https://api.deepl.com/v2/usage")
+    }
+
+    func testDateOnlyIsParsed() {
+        XCTAssertNotNil(parseDate("2026-12-01"))
+        XCTAssertEqual(formatMoney(CreditBalance(amount: 8.4, currency: "credits")), "8.4")
+        XCTAssertEqual(formatMoney(CreditBalance(amount: 250, currency: "credits")), "250")
+    }
+
+    func testNewServicesAreInTheCatalogInSheetOrder() {
+        let ids = Catalog.all.map(\.id)
+        XCTAssertEqual(Array(ids.suffix(8)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy"])
+        XCTAssertEqual(Set(ids).count, ids.count)  // IDは重ならない
+        XCTAssertTrue(Catalog.all.suffix(8).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+    }
+}
