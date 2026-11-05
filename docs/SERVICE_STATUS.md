@@ -13,8 +13,8 @@
 | 26 | AIコーディング | OpenCode | ○ CLIローカル統計 | 今回は見送り | ローカルの統計（BYOK の費用の見積り）。実際の残高ではない |
 | 32 | ノーコード・アプリ制作 | GitHub Spark | ○ 条件付き | 資料の確認待ち | GitHub Copilot と同じ課金の枠。Copilot の後 |
 | 37 | デザイン・画像・動画 | Figma AI / Figma Make | ○ Enterprise公式API | 今回は見送り | Enterprise の管理者トークンが必要（5〜6時間の遅れ） |
-| 48 | デザイン・画像・動画 | Runway API | ◎ 公式API候補 | 実装済み（要実機確認） | v0.4.x〜。入口と項目名は調査表のとおり。公式の資料での再確認は、これから |
-| 51 | デザイン・画像・動画 | Luma Dream Machine API | ◎ 公式API候補 | 実装済み（要実機確認） | v0.4.x〜。入口と項目名は調査表のとおり。公式の資料での再確認は、これから |
+| 48 | デザイン・画像・動画 | Runway API | ◎ 公式API候補 | 実装済み | 公式の資料で入口と項目名を確認済み（実キーでの動作は要確認） |
+| 51 | デザイン・画像・動画 | Luma Dream Machine API | ◎ 公式API候補 | 実装済み | 公式の資料で入口と項目名を確認済み（実キーでの動作は要確認） |
 | 59 | デザイン・画像・動画 | Synthesia | ◎ 公式API候補 | 実装済み | `GET /api/billing/credits`（Bearer）。total / available と、期間の終わり |
 | 71 | リサーチ・業務 | Poe | ○ Creator API履歴 | 今回は見送り | Creator API の履歴で、一般のチャットの利用を網羅するか未確認 |
 | 86 | LLM・生成API | OpenAI Platform API | ○ 条件付き | 今回は見送り | 管理者キーが必要。残高APIではなく、費用と予算上限からの計算 |
