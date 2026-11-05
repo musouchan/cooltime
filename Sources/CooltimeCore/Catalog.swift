@@ -31,7 +31,12 @@ public struct ServiceDef: Identifiable, Sendable {
 }
 
 public enum Catalog {
-    public static let all: [ServiceDef] = automatic + ManualCatalog.all
+    public static let all: [ServiceDef] = automatic + [
+        ServiceDef(id: "sheet-14", name: "Cursor Teams", kind: .subscription, method: .apiKey,
+                   defaultPaymentURL: "https://cursor.com/dashboard", bundleIDs: [],
+                   hint: "公式Admin APIの当期チーム支出。残り枠・更新時刻は取得できません。",
+                   apiKeyHelp: "Cursor Teams Admin APIキー（read権限）。個人プランのキーとは異なります。")
+    ] + ManualCatalog.all.filter { $0.id != "sheet-14" }
     public static let automatic: [ServiceDef] = [
         ServiceDef(id: "claude", name: "Claude / Claude Code", kind: .subscription, method: .statuslineFile,
                    defaultPaymentURL: "https://claude.ai/settings/billing",
