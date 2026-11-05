@@ -4,6 +4,8 @@ Cooltime can read the model quota object emitted by Antigravity CLI's documented
 
 ## Configure the statusline
 
+The statusline helper requires `jq` 1.6 or newer to filter the JSON input without writing session metadata. If Homebrew is installed and `jq` is missing, install it with `brew install jq`.
+
 1. Copy `scripts/cooltime-antigravity-statusline.sh` into `~/.gemini/antigravity-cli/` and make it executable:
 
    ```sh
