@@ -811,14 +811,24 @@ final class DocumentedAPITests: XCTestCase {
     // 2026-11-05 12:00 UTC
     let at = Date(timeIntervalSince1970: 1_793_880_000)
 
-    func testCopilotSumsOnlyAICreditsAndResetsNextMonthUTC() throws {
+    func testCopilotSumsOnlyAICreditsWithoutInventingResetDate() throws {
         let json = #"{"timePeriod":{"year":2026,"month":11},"user":"monalisa","usageItems":[{"unitType":"ai-credits","grossQuantity":300},{"unitType":"ai-credits","grossQuantity":150},{"unitType":"requests","grossQuantity":999}]}"#
         let w = try CopilotCredits.parse(d(json), allowance: 1_500, fetchedAt: at).windows.first
         XCTAssertEqual(w?.usedPercent ?? 0, 30, accuracy: 0.001)
         XCTAssertEqual(w?.remainingCount, 1_050)
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
-        let c = cal.dateComponents([.year, .month, .day, .hour], from: w!.resetsAt!)
-        XCTAssertEqual([c.year!, c.month!, c.day!, c.hour!], [2026, 12, 1, 0])
+        XCTAssertNil(w?.resetsAt)
+        XCTAssertTrue(w?.label.contains("推定") == true)
+    }
+
+    func testCopilotRejectsMalformedAICreditQuantities() throws {
+        for quantity in ["null", "-1", "\"unknown\""] {
+            let json = "{\"usageItems\":[{\"unitType\":\"ai-credits\",\"grossQuantity\":\(quantity)}]}"
+            XCTAssertThrowsError(try CopilotCredits.parse(d(json), allowance: 1_500, fetchedAt: at))
+        }
+        let empty = try CopilotCredits.parse(d(#"{"usageItems":[]}"#), allowance: 1_500, fetchedAt: at)
+        XCTAssertEqual(empty.windows.first?.remainingCount, 1_500)
+        XCTAssertEqual(PlanCatalog.options(for: "spark"), PlanCatalog.options(for: "copilot"))
+        XCTAssertNotNil(Catalog.service("spark"))
     }
 
     func testCopilotNeedsPlanAndCapsAtZeroRemaining() throws {
