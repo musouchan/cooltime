@@ -80,6 +80,17 @@ public enum Catalog {
         ServiceDef(id: "meshy", name: "Meshy", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://www.meshy.ai/api",
                    bundleIDs: [], hint: "3D 生成のクレジット残高。", apiKeyHelp: "Meshy API キー"),
+        // 公式の資料で確認できたもの。
+        ServiceDef(id: "copilot", name: "GitHub Copilot", kind: .subscription, method: .apiKey,
+                   defaultPaymentURL: "https://github.com/settings/billing",
+                   bundleIDs: [], hint: "個人契約の月のAIクレジット。プランを選ぶと残りが出ます。会社・組織の契約は対象外。",
+                   apiKeyHelp: "細かい権限のトークン（ユーザーの「Plan」読み取り）"),
+        ServiceDef(id: "synthesia", name: "Synthesia API", kind: .subscription, method: .apiKey,
+                   defaultPaymentURL: "https://app.synthesia.io/",
+                   bundleIDs: [], hint: "期間のクレジットの残りと、期間の終わり。", apiKeyHelp: "Synthesia API キー"),
+        ServiceDef(id: "tripo", name: "Tripo AI", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://platform.tripo3d.ai/",
+                   bundleIDs: [], hint: "3D 生成のクレジット残高。", apiKeyHelp: "Tripo API キー"),
     ]
 
     public static func service(_ id: String) -> ServiceDef? { all.first { $0.id == id } }

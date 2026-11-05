@@ -133,10 +133,28 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "copilot":
+                let userData = try await get("https://api.github.com/user", headers: githubHeaders(key))
+                let login = try GitHubUser.login(userData)
+                data = try await get(CopilotCredits.path(login: login, now: now), headers: githubHeaders(key))
+                let allowance = PlanCatalog.option(serviceID: "copilot", id: account.planID)?.monthlyCredits
+                return FetchResult(snapshot: try CopilotCredits.parse(data, allowance: allowance, fetchedAt: now),
+                                   identity: nil)
+            case "synthesia":
+                data = try await get("https://developers.synthesia.io/api/billing/credits", headers: bearer(key))
+                return FetchResult(snapshot: try Synthesia.parse(data, fetchedAt: now), identity: nil)
+            case "tripo":
+                data = try await get("https://openapi.tripo3d.ai/v3/account/balance", headers: bearer(key))
+                return FetchResult(snapshot: try Tripo.parse(data, fetchedAt: now), identity: nil)
             default:
                 throw ParseError.unsupported("未対応のサービスです")
             }
         }
+    }
+
+    private static func githubHeaders(_ key: String) -> [String: String] {
+        bearer(key).merging(["Accept": "application/vnd.github+json",
+                             "X-GitHub-Api-Version": CopilotCredits.apiVersion]) { $1 }
     }
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }

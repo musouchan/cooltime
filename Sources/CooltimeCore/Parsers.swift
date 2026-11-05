@@ -299,3 +299,86 @@ public enum DeepL {
         return Snapshot(windows: [w], fetchedAt: fetchedAt)
     }
 }
+
+
+// MARK: - 公式の資料で確認できたもの（Copilot・Synthesia・Tripo）
+
+public enum GitHubUser {
+    /// GET https://api.github.com/user → {"login": "monalisa"}
+    public static func login(_ data: Data) throws -> String {
+        let r = try json(data)
+        guard let l = r["login"] as? String, !l.isEmpty else { throw ParseError.invalid("login がありません") }
+        return l
+    }
+}
+
+public enum CopilotCredits {
+    /// 月（UTC）の、使った AI クレジットを数える。
+    /// GET https://api.github.com/users/{login}/settings/billing/ai_credit/usage?year=Y&month=M
+    /// （X-GitHub-Api-Version: 2026-03-10、細かい権限のトークンの「Plan」読み取り）
+    public static let apiVersion = "2026-03-10"
+
+    public static func path(login: String, now: Date) -> String {
+        let c = utcCalendar.dateComponents([.year, .month], from: now)
+        let name = login.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? login
+        return "https://api.github.com/users/\(name)/settings/billing/ai_credit/usage?year=\(c.year!)&month=\(c.month!)"
+    }
+
+    /// 来月1日 0:00（UTC）。
+    public static func nextReset(after now: Date) -> Date {
+        let start = utcCalendar.date(from: utcCalendar.dateComponents([.year, .month], from: now))!
+        return utcCalendar.date(byAdding: .month, value: 1, to: start)!
+    }
+
+    public static func parse(_ data: Data, allowance: Int?, fetchedAt: Date) throws -> Snapshot {
+        guard let allowance, allowance > 0 else { throw ParseError.unsupported("プランを選ぶと、残りが出ます") }
+        let r = try json(data)
+        guard let items = r["usageItems"] as? [[String: Any]] else { throw ParseError.invalid("usageItems がありません") }
+        let used = items
+            .filter { ($0["unitType"] as? String) == "ai-credits" }
+            .reduce(0.0) { $0 + (number($1["grossQuantity"]) ?? 0) }
+        let w = UsageWindow(label: "月のAIクレジット",
+                            usedPercent: max(0, min(100, used / Double(allowance) * 100)),
+                            remainingCount: max(0, Double(allowance) - used),
+                            resetsAt: nextReset(after: fetchedAt))
+        return Snapshot(windows: [w], fetchedAt: fetchedAt)
+    }
+
+    private static let utcCalendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+}
+
+public enum Synthesia {
+    /// GET https://developers.synthesia.io/api/billing/credits（Authorization: Bearer）→
+    /// {"period": {"startsAt", "endsAt"}, "credits": {"total": "1000.00", "consumed": "250.50", "available": "749.50"}}
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let r = try json(data)
+        guard let c = r["credits"] as? [String: Any], let total = number(c["total"]), total > 0,
+              let available = number(c["available"]) else {
+            throw ParseError.invalid("credits の total / available がありません")
+        }
+        let end = ((r["period"] as? [String: Any])?["endsAt"]).flatMap(parseDate)
+        let w = UsageWindow(label: "期間のクレジット",
+                            usedPercent: max(0, min(100, (total - available) / total * 100)),
+                            remainingCount: max(0, available), resetsAt: end)
+        return Snapshot(windows: [w], fetchedAt: fetchedAt)
+    }
+}
+
+public enum Tripo {
+    /// GET https://openapi.tripo3d.ai/v3/account/balance（Authorization: Bearer）→ {"balance": 10000.00, "frozen": 200.00}
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        let r = (root["data"] as? [String: Any]) ?? root
+        guard let b = number(r["balance"]) else { throw ParseError.invalid("balance がありません") }
+        let frozen = number(r["frozen"]).flatMap { $0 > 0 ? $0 : nil }
+        return Snapshot(credit: CreditBalance(amount: b, currency: "credits",
+                                              note: frozen.map { "処理中で確保されている分 \(formatNumber($0))" }),
+                        fetchedAt: fetchedAt)
+    }
+
+    private static func formatNumber(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v) }
+}

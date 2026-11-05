@@ -40,7 +40,7 @@ AI・API・MCP の**利用制限が「あと何分・何時間で戻るか」**�
 
 **調査表（スプレッドシート）から追加したもの**（上から順。入口と項目名は調査表のとおり。**公式の資料での再確認と、実機での確認は、まだ**です）:
 Runway API・Luma Dream Machine API・Stability AI・Photoroom API・Meshy（クレジット残高）、Apify・SerpAPI・DeepL API（月の枠）。
-どれも、APIキーを入れて「保存して取得」を押したときだけ、通信します。GitHub Copilot など、資料の確認待ちのものと、見送ったものの理由は、[`docs/SERVICE_STATUS.md`](docs/SERVICE_STATUS.md) にまとめています。
+どれも、APIキーを入れて「保存して取得」を押したときだけ、通信します。GitHub Copilot（個人契約・プランを選ぶと残りが出ます）・Synthesia・Tripo AI も入っています。資料の確認待ちのものと、見送ったものの理由は、[`docs/SERVICE_STATUS.md`](docs/SERVICE_STATUS.md) にまとめています。
 
 戻る時刻を正確に取れないもの（Figma MCP、API 課金の Claude Code、Lovable、Netlify、Midjourney、
 Anthropic / OpenAI API のレート制限など）は載せていません。推定の数字も出しません。

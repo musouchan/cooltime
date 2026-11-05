@@ -799,8 +799,57 @@ final class MoreAPIParserTests: XCTestCase {
 
     func testNewServicesAreInTheCatalogInSheetOrder() {
         let ids = Catalog.all.map(\.id)
-        XCTAssertEqual(Array(ids.suffix(8)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy"])
+        XCTAssertEqual(Array(ids.suffix(11)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy",
+                                               "copilot", "synthesia", "tripo"])
         XCTAssertEqual(Set(ids).count, ids.count)  // IDは重ならない
-        XCTAssertTrue(Catalog.all.suffix(8).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+        XCTAssertTrue(Catalog.all.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+    }
+}
+
+final class DocumentedAPITests: XCTestCase {
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+    // 2026-11-05 12:00 UTC
+    let at = Date(timeIntervalSince1970: 1_793_880_000)
+
+    func testCopilotSumsOnlyAICreditsAndResetsNextMonthUTC() throws {
+        let json = #"{"timePeriod":{"year":2026,"month":11},"user":"monalisa","usageItems":[{"unitType":"ai-credits","grossQuantity":300},{"unitType":"ai-credits","grossQuantity":150},{"unitType":"requests","grossQuantity":999}]}"#
+        let w = try CopilotCredits.parse(d(json), allowance: 1_500, fetchedAt: at).windows.first
+        XCTAssertEqual(w?.usedPercent ?? 0, 30, accuracy: 0.001)
+        XCTAssertEqual(w?.remainingCount, 1_050)
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.year, .month, .day, .hour], from: w!.resetsAt!)
+        XCTAssertEqual([c.year!, c.month!, c.day!, c.hour!], [2026, 12, 1, 0])
+    }
+
+    func testCopilotNeedsPlanAndCapsAtZeroRemaining() throws {
+        XCTAssertThrowsError(try CopilotCredits.parse(d(#"{"usageItems":[]}"#), allowance: nil, fetchedAt: at))
+        let over = try CopilotCredits.parse(d(#"{"usageItems":[{"unitType":"ai-credits","grossQuantity":2000}]}"#), allowance: 1_500, fetchedAt: at).windows.first
+        XCTAssertEqual(over?.usedPercent, 100)
+        XCTAssertEqual(over?.remainingCount, 0)
+        XCTAssertThrowsError(try CopilotCredits.parse(d("{}"), allowance: 1_500, fetchedAt: at))
+    }
+
+    func testCopilotRequestPathAndPlans() throws {
+        XCTAssertEqual(CopilotCredits.path(login: "mona", now: at),
+                       "https://api.github.com/users/mona/settings/billing/ai_credit/usage?year=2026&month=11")
+        XCTAssertEqual(try GitHubUser.login(d(#"{"login":"mona"}"#)), "mona")
+        XCTAssertEqual(PlanCatalog.options(for: "copilot").map(\.monthlyCredits), [1_500, 7_000, 20_000])
+    }
+
+    func testSynthesiaDecimalStrings() throws {
+        let json = #"{"period":{"startsAt":"2026-11-01T00:00:00Z","endsAt":"2026-12-01T00:00:00Z"},"credits":{"total":"1000.00","consumed":"250.50","available":"749.50","unit":"credits"}}"#
+        let w = try Synthesia.parse(d(json), fetchedAt: at).windows.first
+        XCTAssertEqual(w?.usedPercent ?? 0, 25.05, accuracy: 0.001)
+        XCTAssertEqual(w?.remainingCount, 749.5)
+        XCTAssertNotNil(w?.resetsAt)
+        XCTAssertThrowsError(try Synthesia.parse(d(#"{"credits":{}}"#), fetchedAt: at))
+    }
+
+    func testTripoBalanceAndFrozen() throws {
+        let c = try Tripo.parse(d(#"{"balance": 10000.00, "frozen": 200.00}"#), fetchedAt: at).credit
+        XCTAssertEqual(c?.amount, 10000)
+        XCTAssertEqual(c?.note, "処理中で確保されている分 200")
+        XCTAssertNil(try Tripo.parse(d(#"{"data":{"balance": 5, "frozen": 0}}"#), fetchedAt: at).credit?.note)
+        XCTAssertThrowsError(try Tripo.parse(d("{}"), fetchedAt: at))
     }
 }
