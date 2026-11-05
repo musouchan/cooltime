@@ -173,7 +173,8 @@ private struct DetailView: View {
                 if item.service.method == .apiKey { keyCard }
                 if item.service.method == .manual { manualCard }
                 if !planOptions.isEmpty { planCard }
-                if item.service.method == .statuslineFile { StatuslineSetupView().card() }
+                if item.service.id == "claude" { StatuslineSetupView().card() }
+                if item.service.id == "sheet-11" { AntigravityStatuslineSetupView().card() }
                 advanced
             }
             .padding(24)
@@ -514,5 +515,25 @@ private struct StatuslineSetupView: View {
     private func run(_ work: () throws -> Void) {
         do { try work(); message = nil } catch { message = error.localizedDescription }
         isSet = StatuslineSetup.isSet()
+    }
+}
+
+
+private struct AntigravityStatuslineSetupView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Antigravity CLI から自動取得").font(.headline)
+            Text("公式 statusLine コマンドを設定すると、モデル別クォータのJSONだけをこのMacに保存します。会話本文・プロジェクトパス・メールアドレス・認証情報は保存しません。")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("セットアップ手順を開く") {
+                    if let url = URL(string: "https://github.com/musouchan/cooltime/blob/main/docs/ANTIGRAVITY_STATUSLINE.md") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Text("CLIが起動中に statusLine の状態変化ごとに更新されます。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }
