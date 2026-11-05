@@ -799,10 +799,10 @@ final class MoreAPIParserTests: XCTestCase {
 
     func testNewServicesAreInTheCatalogInSheetOrder() {
         let ids = Catalog.all.map(\.id)
-        XCTAssertEqual(Array(ids.suffix(11)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy",
+        XCTAssertEqual(Array(ids.suffix(12)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy", "spark",
                                                "copilot", "synthesia", "tripo"])
         XCTAssertEqual(Set(ids).count, ids.count)  // IDは重ならない
-        XCTAssertTrue(Catalog.all.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+        XCTAssertTrue(Catalog.all.suffix(12).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
     }
 }
 
