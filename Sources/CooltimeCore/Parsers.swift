@@ -505,3 +505,20 @@ public enum ElicitUsage {
         return Snapshot(windows: windows, credit: credit, fetchedAt: fetchedAt)
     }
 }
+
+
+// MARK: - HeadshotPro Organization Credits API
+
+public enum HeadshotProCredits {
+    /// GET https://server.headshotpro.com/api/v2/organization/credits.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard root["success"] as? Bool == true,
+              let credits = number(root["credits"]),
+              credits >= 0, credits.rounded() == credits else {
+            throw ParseError.invalid("credits がありません")
+        }
+        return Snapshot(credit: CreditBalance(amount: credits, currency: "credits"),
+                        fetchedAt: fetchedAt)
+    }
+}
