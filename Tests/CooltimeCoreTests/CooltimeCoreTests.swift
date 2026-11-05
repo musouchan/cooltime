@@ -895,11 +895,11 @@ final class ManualImportTests: XCTestCase {
     }
 
     func testCSVImportParsesEscapedSourceAndMultipleRows() throws {
-        let csv = """
+        let csv = #"""
         remaining,unit,observed_at,reset_at,source
         12,credits,2026-11-05T12:00:00Z,,"公式, Billing"
         0,requests,2026-11-05T12:01:00Z,2026-11-06T00:00:00Z,"Usage ""Quota"""
-        """
+        """#
         let records = try ManualImport.parseCSV(csv, now: later.addingTimeInterval(300))
         XCTAssertEqual(records.count, 2)
         XCTAssertEqual(records[0].source, "公式, Billing")
