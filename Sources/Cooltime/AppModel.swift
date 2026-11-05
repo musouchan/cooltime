@@ -188,8 +188,10 @@ final class AppModel: ObservableObject {
         subscriptions.filter { $0.state == .available || $0.state == .unset }
     }
     var credits: [Item] {
-        items.filter { $0.service.kind == .credit || $0.snapshot?.credit != nil }
+        items.filter { $0.service.method != .manual && ($0.service.kind == .credit || $0.snapshot?.credit != nil) }
     }
+
+    var manualCredits: [Item] { items.filter { $0.service.method == .manual } }
 
     func untilDate(_ i: Item) -> Date {
         if case .limited(let d) = i.state { return d }
