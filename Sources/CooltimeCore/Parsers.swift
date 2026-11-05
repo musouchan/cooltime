@@ -466,3 +466,42 @@ public enum PoeBalance {
         return Snapshot(credit: CreditBalance(amount: raw, currency: "points"), fetchedAt: fetchedAt)
     }
 }
+
+
+// MARK: - Elicit Usage API
+
+public enum ElicitUsage {
+    /// GET https://elicit.com/api/v2/usage returns plan usage and optional extra-usage spend.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let available = root["hasUsageRemaining"] as? Bool,
+              let percent = number(root["percentUsed"]), percent >= 0, percent <= 100 else {
+            throw ParseError.invalid("hasUsageRemaining / percentUsed がありません")
+        }
+        let periodEnd = parseDate(root["periodEnd"])
+        let windows = [UsageWindow(label: "請求期間のプラン利用",
+                                   usedPercent: percent,
+                                   resetsAt: periodEnd)]
+        var credit: CreditBalance?
+        if let extra = root["extraUsage"] as? [String: Any] {
+            guard let spentCents = number(extra["spentUsdCents"]), spentCents >= 0 else {
+                throw ParseError.invalid("extraUsage.spentUsdCents がありません")
+            }
+            if let limitValue = extra["limitUsdCents"], !(limitValue is NSNull) {
+                guard let limitCents = number(limitValue), limitCents >= spentCents else {
+                    throw ParseError.invalid("extraUsage.limitUsdCents が不正です")
+                }
+                credit = CreditBalance(amount: (limitCents - spentCents) / 100,
+                                       currency: "USD",
+                                       resetsAt: periodEnd,
+                                       note: "追加利用の残額")
+            }
+        } else if !(root["extraUsage"] is NSNull) {
+            throw ParseError.invalid("extraUsage が不正です")
+        }
+        // hasUsageRemaining also accounts for per-member weekly caps. Preserve the
+        // exact billing-period percentage instead of rewriting it to imply exhaustion.
+        _ = available
+        return Snapshot(windows: windows, credit: credit, fetchedAt: fetchedAt)
+    }
+}

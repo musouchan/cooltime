@@ -148,6 +148,9 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-81":
+                data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
+                return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
             case "sheet-71":
                 data = try await get("https://api.poe.com/usage/current_balance", headers: bearer(key))
                 return FetchResult(snapshot: try PoeBalance.parse(data, fetchedAt: now), identity: nil)

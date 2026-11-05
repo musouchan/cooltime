@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 161)
+        XCTAssertEqual(ManualCatalog.all.count, 160)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -1058,6 +1058,39 @@ final class PoeBalanceTests: XCTestCase {
     func testRejectsMissingMalformedNegativeAndFractionalBalance() {
         for fixture in ["{}", #"{"current_point_balance":-1}"#, #"{"current_point_balance":1.5}"#, "not json"] {
             XCTAssertThrowsError(try PoeBalance.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class ElicitUsageTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesPlanUsageAndCappedExtraUsage() throws {
+        let fixture = #"{"hasUsageRemaining":true,"percentUsed":42.5,"periodStart":"2026-11-01T00:00:00Z","periodEnd":"2026-12-01T00:00:00Z","extraUsage":{"limitUsdCents":500,"spentUsdCents":125}}"#
+        let snapshot = try ElicitUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 42.5)
+        XCTAssertEqual(snapshot.windows.first?.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
+        XCTAssertEqual(snapshot.credit?.amount, 3.75)
+        XCTAssertEqual(snapshot.credit?.currency, "USD")
+    }
+
+    func testParsesUncappedExtraUsageWithoutInventingRemainingBalance() throws {
+        let fixture = #"{"hasUsageRemaining":false,"percentUsed":100,"periodStart":"","periodEnd":"","extraUsage":{"limitUsdCents":null,"spentUsdCents":250}}"#
+        let snapshot = try ElicitUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 100)
+        XCTAssertNil(snapshot.credit)
+    }
+
+    func testRejectsMissingMalformedAndInvalidUsage() {
+        for fixture in [
+            "{}",
+            #"{"hasUsageRemaining":true,"percentUsed":101,"periodEnd":"","extraUsage":null}"#,
+            #"{"hasUsageRemaining":true,"percentUsed":4,"periodEnd":"","extraUsage":{"limitUsdCents":20}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try ElicitUsage.parse(d(fixture), fetchedAt: at))
         }
     }
 }
