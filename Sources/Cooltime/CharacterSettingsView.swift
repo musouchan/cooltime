@@ -10,6 +10,7 @@ struct CharacterSettingsView: View {
     @AppStorage(CharacterPrefs.lowPowerKey) private var inLowPower = false
     @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
     @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
+    @AppStorage(CharacterPrefs.compactKey) private var compact = false
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -45,6 +46,13 @@ struct CharacterSettingsView: View {
                     }
                     .pickerStyle(.segmented).labelsHidden().frame(maxWidth: 280)
                     Text("残りの棒と、振り返りのグラフが変わります。メニューバーは、いつもシンプルです。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("メニューバーの幅").font(.title3).fontWeight(.semibold)
+                    Toggle("せまくする（サービスのアイコンなし・短い文字）", isOn: $compact)
+                    Text("メニューバーが混んでいると、macOS は、入りきらないアイコンを、何も言わずに隠します。Cooltime が出てこないときに、オンにしてください。Command キーを押しながら、アイコンをドラッグすると、位置も動かせます。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 

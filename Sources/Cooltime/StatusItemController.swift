@@ -35,6 +35,8 @@ final class StatusItemController: NSObject {
         popover.contentViewController = host
         popover.behavior = .transient
 
+        // 場所を、macOS に覚えさせる（Command を押しながらドラッグして、好きな位置に動かせる）
+        item.autosaveName = "app.cooltime.statusitem"
         if let button = item.button {
             button.target = self
             button.action = #selector(toggle)
@@ -81,10 +83,12 @@ final class StatusItemController: NSObject {
     private func refresh() {
         guard let button = item.button else { return }
         display = model.menuBarDisplay
-        let text = display.text(now: model.now)
+        let compact = CharacterPrefs.menuBarCompact
+        let text = display.text(now: model.now, compact: compact)
 
         // 数字と、その数字のもとのサービス（アイコン）が変わったときだけ、タイトルを作り直す
-        let service = display.source.flatMap { Catalog.service($0) }
+        // せまい表示では、サービスのアイコンを付けない
+        let service = compact ? nil : display.source.flatMap { Catalog.service($0) }
         let titleKey = "\(text ?? "")|\(service?.id ?? "")"
         if titleKey != lastTitle {
             lastTitle = titleKey

@@ -37,7 +37,7 @@ public func formatMoney(_ credit: CreditBalance) -> String {
     switch credit.currency {
     case "USD": return String(format: "$%.2f", credit.amount)
     case "CNY": return String(format: "¥%.2f", credit.amount)
-    case "credits": return String(format: "%.0f", credit.amount)
+    case "credits": return credit.amount.rounded() == credit.amount ? String(format: "%.0f", credit.amount) : String(format: "%.1f", credit.amount)
     default: return String(format: "%.2f %@", credit.amount, credit.currency)
     }
 }

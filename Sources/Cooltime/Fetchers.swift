@@ -106,10 +106,55 @@ enum Fetchers {
             case "deepseek":
                 data = try await get("https://api.deepseek.com/user/balance", headers: bearer(key))
                 return FetchResult(snapshot: try DeepSeek.parse(data, fetchedAt: now), identity: nil)
+            case "runway":
+                data = try await get("https://api.dev.runwayml.com/v1/organization",
+                                     headers: bearer(key).merging(["X-Runway-Version": RunwayAPI.version]) { $1 })
+                return FetchResult(snapshot: try RunwayAPI.parse(data, fetchedAt: now), identity: nil)
+            case "luma":
+                data = try await get("https://api.lumalabs.ai/dream-machine/v1/credits", headers: bearer(key))
+                return FetchResult(snapshot: try LumaAI.parse(data, fetchedAt: now), identity: nil)
+            case "stability":
+                data = try await get("https://api.stability.ai/v1/user/balance", headers: bearer(key))
+                return FetchResult(snapshot: try StabilityAI.parse(data, fetchedAt: now), identity: nil)
+            case "apify":
+                data = try await get("https://api.apify.com/v2/users/me/limits", headers: bearer(key))
+                return FetchResult(snapshot: try Apify.parse(data, fetchedAt: now), identity: nil)
+            case "serpapi":
+                // SerpAPI は、キーを URL の末尾に付ける作り。ログには出さない。
+                let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
+                data = try await get("https://serpapi.com/account.json?api_key=\(encoded)", headers: [:])
+                return FetchResult(snapshot: try SerpAPI.parse(data, fetchedAt: now), identity: nil)
+            case "deepl":
+                data = try await get(DeepL.endpoint(forKey: key), headers: ["Authorization": "DeepL-Auth-Key \(key)"])
+                return FetchResult(snapshot: try DeepL.parse(data, fetchedAt: now), identity: nil)
+            case "photoroom":
+                data = try await get("https://image-api.photoroom.com/v1/account", headers: ["x-api-key": key])
+                return FetchResult(snapshot: try Photoroom.parse(data, fetchedAt: now), identity: nil)
+            case "meshy":
+                data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
+                return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "copilot":
+                let userData = try await get("https://api.github.com/user", headers: githubHeaders(key))
+                let login = try GitHubUser.login(userData)
+                data = try await get(CopilotCredits.path(login: login, now: now), headers: githubHeaders(key))
+                let allowance = PlanCatalog.option(serviceID: "copilot", id: account.planID)?.monthlyCredits
+                return FetchResult(snapshot: try CopilotCredits.parse(data, allowance: allowance, fetchedAt: now),
+                                   identity: nil)
+            case "synthesia":
+                data = try await get("https://developers.synthesia.io/api/billing/credits", headers: bearer(key))
+                return FetchResult(snapshot: try Synthesia.parse(data, fetchedAt: now), identity: nil)
+            case "tripo":
+                data = try await get("https://openapi.tripo3d.ai/v3/account/balance", headers: bearer(key))
+                return FetchResult(snapshot: try Tripo.parse(data, fetchedAt: now), identity: nil)
             default:
                 throw ParseError.unsupported("未対応のサービスです")
             }
         }
+    }
+
+    private static func githubHeaders(_ key: String) -> [String: String] {
+        bearer(key).merging(["Accept": "application/vnd.github+json",
+                             "X-GitHub-Api-Version": CopilotCredits.apiVersion]) { $1 }
     }
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }

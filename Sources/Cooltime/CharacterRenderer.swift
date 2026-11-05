@@ -43,11 +43,14 @@ enum CharacterPrefs {
     static let motionKey = "characterMotion"
     /// 低電力モードのときも、フルに動かす（既定はオフ。仕様は、まばたきだけ）。
     static let lowPowerKey = "characterMotionInLowPower"
+    /// メニューバーが混んでいて隠れるときのための、せまい表示（アイコンなし・短い文字）。
+    static let compactKey = "menuBarCompact"
 
     static var characterID: String {
         let v = UserDefaults.standard.string(forKey: characterKey) ?? "bunny"
         return CharacterData.ids.contains(v) ? v : "bunny"
     }
+    static var menuBarCompact: Bool { UserDefaults.standard.bool(forKey: compactKey) }
     static var motionInLowPower: Bool { UserDefaults.standard.bool(forKey: lowPowerKey) }
     static var motion: MotionSetting {
         MotionSetting(rawValue: UserDefaults.standard.string(forKey: motionKey) ?? "") ?? .full
