@@ -24,6 +24,11 @@ struct PopoverView: View {
             if !model.credits.isEmpty {
                 section("クレジット", trailing: "時間では戻りません") { ForEach(model.credits) { CreditRow(item: $0) } }
             }
+            if !model.manualCredits.isEmpty {
+                section("手動記録", trailing: "現在値ではありません") {
+                    ForEach(model.manualCredits) { ManualCreditRow(item: $0) }
+                }
+            }
             Divider()
             HStack {
                 Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
@@ -174,6 +179,35 @@ private struct CreditRow: View {
                 }
                 .help("支払いページを開く").accessibilityLabel("支払いページを開く")
             }
+        }
+    }
+}
+
+/// 過去の観測値を表示する。自動取得の「クレジット」と混ぜない。
+private struct ManualCreditRow: View {
+    @EnvironmentObject var model: AppModel
+    @EnvironmentObject var actions: AppActions
+    let item: Item
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AppIconView(service: item.service)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).lineLimit(1)
+                if let at = item.snapshot?.fetchedAt {
+                    Text("\(formatClock(at, now: model.now)) に手動で確認")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("記録なし").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if let c = item.snapshot?.credit {
+                Text(formatMoney(c)).font(.callout).foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            Button("編集") { actions.openManage() }
+                .font(.caption)
         }
     }
 }
