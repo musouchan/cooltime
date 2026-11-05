@@ -98,7 +98,7 @@ final class ParserTests: XCTestCase {
     }
 
     func testClaudeStatuslineWithoutLimitsIsRejected() {
-        XCTAssertThrowsError(try ClaudeStatusline.parse(d("{\"model\":{}}"), fetchedAt: at))
+        XCTAssertThrowsError(try ClaudeStatusline.parse(d("{"model":{}}"), fetchedAt: at))
     }
 
     func testCodex() throws {
@@ -127,14 +127,14 @@ final class ParserTests: XCTestCase {
     }
 
     func testVercelAndDeepSeek() throws {
-        XCTAssertEqual(try VercelAIGateway.parse(d("{\"balance\":\"95.50\",\"total_used\":\"4\"}"), fetchedAt: at).credit?.amount, 95.5)
-        let ds = try DeepSeek.parse(d("{\"balance_infos\":[{\"currency\":\"USD\",\"total_balance\":\"12.00\"}]}"), fetchedAt: at)
+        XCTAssertEqual(try VercelAIGateway.parse(d("{"balance":"95.50","total_used":"4"}"), fetchedAt: at).credit?.amount, 95.5)
+        let ds = try DeepSeek.parse(d("{"balance_infos":[{"currency":"USD","total_balance":"12.00"}]}"), fetchedAt: at)
         XCTAssertEqual(formatMoney(ds.credit!), "$12.00")
     }
 
     func testOpenRouterRequiresLimit() throws {
-        XCTAssertThrowsError(try OpenRouter.parse(d("{\"data\":{\"limit\":null,\"limit_remaining\":null}}"), fetchedAt: at))
-        let s = try OpenRouter.parse(d("{\"data\":{\"limit\":20,\"limit_remaining\":18.4,\"limit_reset\":\"monthly\"}}"), fetchedAt: at)
+        XCTAssertThrowsError(try OpenRouter.parse(d("{"data":{"limit":null,"limit_remaining":null}}"), fetchedAt: at))
+        let s = try OpenRouter.parse(d("{"data":{"limit":20,"limit_remaining":18.4,"limit_reset":"monthly"}}"), fetchedAt: at)
         XCTAssertEqual(s.credit?.amount, 18.4)
         XCTAssertNotNil(s.credit?.resetsAt)
     }
@@ -156,15 +156,15 @@ final class IdentityTests: XCTestCase {
         {"oauthAccount":{"emailAddress":"me@example.com","organizationName":"Me"},"projects":{}}
         """))
         XCTAssertEqual(id, AccountIdentity(email: "me@example.com"))
-        XCTAssertNil(ClaudeAccount.parse(d("{\"projects\":{}}")))
+        XCTAssertNil(ClaudeAccount.parse(d("{"projects":{}}")))
     }
 
     func testCodexAccountMapsPlanToType() {
-        let plus = CodexAccount.parse(d("{\"id\":3,\"result\":{\"account\":{\"type\":\"chatgpt\",\"email\":\"a@b.c\",\"planType\":\"plus\"}}}"))
+        let plus = CodexAccount.parse(d("{"id":3,"result":{"account":{"type":"chatgpt","email":"a@b.c","planType":"plus"}}}"))
         XCTAssertEqual(plus, AccountIdentity(email: "a@b.c", plan: "Plus", type: .personal))
-        let team = CodexAccount.parse(d("{\"result\":{\"account\":{\"planType\":\"team\"}}}"))
+        let team = CodexAccount.parse(d("{"result":{"account":{"planType":"team"}}}"))
         XCTAssertEqual(team?.type, .business)
-        XCTAssertNil(CodexAccount.parse(d("{\"error\":{\"message\":\"x\"}}")))
+        XCTAssertNil(CodexAccount.parse(d("{"error":{"message":"x"}}")))
     }
 }
 
@@ -176,18 +176,18 @@ final class StatuslineConfigTests: XCTestCase {
     func testAddsToEmptyOrMissingFile() throws {
         let c = try StatuslineConfig.plan(existing: nil, scriptPath: script)
         let sl = obj(c.newData)["statusLine"] as! [String: Any]
-        XCTAssertEqual(sl["command"] as? String, "\"\(script)\"")
+        XCTAssertEqual(sl["command"] as? String, ""\(script)"")
         XCTAssertFalse(c.alreadySet)
     }
 
     func testKeepsOtherSettingsAndWrapsExistingStatusline() throws {
-        let existing = d("{\"theme\":\"dark\",\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\",\"padding\":2}}")
+        let existing = d("{"theme":"dark","statusLine":{"type":"command","command":"echo it's me","padding":2}}")
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let root = obj(c.newData)
         XCTAssertEqual(root["theme"] as? String, "dark")
         let sl = root["statusLine"] as! [String: Any]
         XCTAssertEqual(sl["padding"] as? Int, 2)
-        XCTAssertTrue((sl["command"] as! String).hasPrefix("\"\(script)\" '"))
+        XCTAssertTrue((sl["command"] as! String).hasPrefix(""\(script)" '"))
         XCTAssertEqual(c.before, "echo it's me")
         XCTAssertTrue(StatuslineConfig.isSet(c.newData, scriptPath: script))
     }
@@ -199,12 +199,12 @@ final class StatuslineConfigTests: XCTestCase {
     }
 
     func testRevertRestoresOriginal() throws {
-        let existing = d("{\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\"}}")
+        let existing = d("{"statusLine":{"type":"command","command":"echo it's me"}}")
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let back = try StatuslineConfig.revert(existing: c.newData, scriptPath: script)!
         XCTAssertEqual((obj(back)["statusLine"] as! [String: Any])["command"] as? String, "echo it's me")
 
-        let fresh = try StatuslineConfig.plan(existing: d("{\"a\":1}"), scriptPath: script)
+        let fresh = try StatuslineConfig.plan(existing: d("{"a":1}"), scriptPath: script)
         let none = try StatuslineConfig.revert(existing: fresh.newData, scriptPath: script)!
         XCTAssertNil(obj(none)["statusLine"])
         XCTAssertEqual(obj(none)["a"] as? Int, 1)
@@ -212,8 +212,8 @@ final class StatuslineConfigTests: XCTestCase {
 
     func testRefusesToTouchUnreadableOrUnknownShapes() {
         XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("not json"), scriptPath: script))
-        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("{\"statusLine\":\"x\"}"), scriptPath: script))
-        XCTAssertNil(try StatuslineConfig.revert(existing: d("{\"statusLine\":{\"type\":\"command\",\"command\":\"mine\"}}"), scriptPath: script))
+        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("{"statusLine":"x"}"), scriptPath: script))
+        XCTAssertNil(try StatuslineConfig.revert(existing: d("{"statusLine":{"type":"command","command":"mine"}}"), scriptPath: script))
     }
 }
 
@@ -859,10 +859,11 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 166)
+        XCTAssertEqual(ManualCatalog.all.count, 165)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
+        XCTAssertEqual(Catalog.service("sheet-11")?.method, .statuslineFile)
         XCTAssertEqual(Catalog.service("sheet-187")?.name, "Kindroid")
         XCTAssertTrue(ManualCatalog.all.allSatisfy { $0.method == .manual && $0.apiKeyHelp == nil })
     }
@@ -905,7 +906,7 @@ final class ManualImportTests: XCTestCase {
         XCTAssertEqual(records[0].source, "公式, Billing")
         XCTAssertNil(records[0].resetsAt)
         XCTAssertEqual(records[1].remaining, 0)
-        XCTAssertEqual(records[1].source, "Usage \"Quota\"")
+        XCTAssertEqual(records[1].source, "Usage "Quota"")
         XCTAssertNotNil(records[1].resetsAt)
     }
 
@@ -915,7 +916,51 @@ final class ManualImportTests: XCTestCase {
                                                       now: later))
         XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,not-a-date,official",
                                                       now: later))
-        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,2026-11-05T12:00:00Z,\"bad",
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,2026-11-05T12:00:00Z,"bad",
                                                       now: later))
+    }
+}
+
+
+final class AntigravityStatuslineTests: XCTestCase {
+    private let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    private func data(_ text: String) -> Data { Data(text.utf8) }
+
+    func testParsesOfficialQuotaStatuslineAndKeepsResetTime() throws {
+        let json = #"{"gemini-weekly":{"remaining_fraction":0.9378,"reset_time":"2026-07-06T07:50:32Z","reset_in_seconds":560580},"claude-daily":{"remaining_amount":12,"reset_time":"2026-07-06T08:00:00Z"}}"#
+        let snapshot = try AntigravityStatusline.parse(data(json), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.windows.count, 2)
+        let weekly = try XCTUnwrap(snapshot.windows.first { $0.label == "gemini-weekly" })
+        XCTAssertEqual(weekly.usedPercent ?? -1, 6.22, accuracy: 0.001)
+        XCTAssertEqual(weekly.remainingPercent ?? -1, 93.78, accuracy: 0.001)
+        XCTAssertEqual(weekly.resetsAt, Date(timeIntervalSince1970: 1_783_324_232))
+        let daily = try XCTUnwrap(snapshot.windows.first { $0.label == "claude-daily" })
+        XCTAssertNil(daily.usedPercent)
+        XCTAssertEqual(daily.remainingCount, 12)
+        XCTAssertNil(snapshot.credit)
+        XCTAssertEqual(snapshot.fetchedAt, fetchedAt)
+    }
+
+    func testParsesWrappedQuotaAndSkipsDisabledBuckets() throws {
+        let wrapped = #"{"quota":{"disabled-model":{"disabled":true},"weekly":{"remaining_fraction":0.5}}}"#
+        let snapshot = try AntigravityStatusline.parse(data(wrapped), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].usedPercent ?? -1, 50, accuracy: 0.001)
+        XCTAssertNil(snapshot.windows[0].resetsAt)
+    }
+
+    func testRejectsMissingMalformedAndInvalidQuotaValues() {
+        for json in [
+            "{}",
+            #"{"quota":{}}"#,
+            #"{"quota":{"weekly":{"remaining_fraction":1.1}}}"#,
+            #"{"weekly":{"remaining_fraction":-0.1}}"#,
+            #"{"weekly":{"remaining_fraction":0.5,"reset_time":"later"}}"#,
+            #"{"weekly":{"remaining_fraction":"unknown"}}"#,
+            #"{"weekly":{"disabled":true}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try AntigravityStatusline.parse(data(json), fetchedAt: fetchedAt), "Should reject: \(json)")
+        }
     }
 }
