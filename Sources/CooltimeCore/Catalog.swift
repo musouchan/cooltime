@@ -80,7 +80,7 @@ public enum Catalog {
         ServiceDef(id: "meshy", name: "Meshy", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://www.meshy.ai/api",
                    bundleIDs: [], hint: "3D 生成のクレジット残高。", apiKeyHelp: "Meshy API キー"),
-        // 公式の資料で確認できたもの。
+        // GitHub Spark は Copilot と同じ GitHub AI クレジット利用量を参照する。\n        // Spark 単独の残量ではないため、同じ契約を二重計上しないこと。\n        ServiceDef(id: "spark", name: "GitHub Spark（Copilot共通枠）", kind: .subscription, method: .apiKey,\n                   defaultPaymentURL: "https://github.com/settings/billing",\n                   bundleIDs: [], hint: "GitHub Copilotと共通のAIクレジット使用量。Spark専用の残量ではありません。個人契約のみ。",\n                   apiKeyHelp: "細かい権限のトークン（ユーザーの「Plan」読み取り）"),\n        // 公式の資料で確認できたもの。
         ServiceDef(id: "copilot", name: "GitHub Copilot", kind: .subscription, method: .apiKey,
                    defaultPaymentURL: "https://github.com/settings/billing",
                    bundleIDs: [], hint: "個人契約の月のAIクレジット。プランを選ぶと残りが出ます。会社・組織の契約は対象外。",
