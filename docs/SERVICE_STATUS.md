@@ -10,6 +10,7 @@
 | 11 | AIコーディング | Google Antigravity | ○ 条件付き | 実出力の確認待ち | `agy -p /usage` の資料は読めたが、出力の具体例が無い。実際の出力を貼ってもらってから、読み取りを書く |
 | 12 | AIコーディング | Gemini CLI | ○ 条件付き | 今回は見送り | セッション統計だけで、アカウント全体の枠は分からない（調査表にも「確定不可」） |
 | 14 | AIコーディング | Cursor Teams | ○ 条件付き | 今回は見送り | Team 契約と管理者APIキーが必要（個人向けではない） |
+| 20 | AIコーディング | Devin | ◎ Enterprise公式API | 実装済み（実アカウント未検証） | Enterprise Consumption APIとBudgets APIでroot予算のACU残量を取得。Enterprise契約・有効なBudgets機能・finite root budgetと強い権限を要する。自動テスト追加。 |
 | 26 | AIコーディング | OpenCode | ○ CLIローカル統計 | 今回は見送り | ローカルの統計（BYOK の費用の見積り）。実際の残高ではない |
 | 32 | ノーコード・アプリ制作 | GitHub Spark | ○ 条件付き | 資料の確認待ち | GitHub Copilot と同じ課金の枠。Copilot の後 |
 | 37 | デザイン・画像・動画 | Figma AI / Figma Make | ○ Enterprise公式API | 今回は見送り | Enterprise の管理者トークンが必要（5〜6時間の遅れ） |

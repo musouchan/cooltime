@@ -151,6 +151,16 @@ enum Fetchers {
             case "sheet-168":
                 data = try await get("https://server.headshotpro.com/api/v2/organization/credits", headers: bearer(key))
                 return FetchResult(snapshot: try HeadshotProCredits.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-20":
+                let cyclesData = try await get("https://api.devin.ai/v3/enterprise/consumption/cycles?first=200", headers: bearer(key))
+                let cycle = try DevinEnterpriseUsage.currentCycle(in: cyclesData, now: now)
+                let budgetsData = try await get("https://api.devin.ai/v3beta1/enterprise/usage-policies/budgets?first=200", headers: bearer(key))
+                let usageURL = "https://api.devin.ai/v3/enterprise/consumption/daily?time_after=\(cycle.after)&time_before=\(cycle.before)"
+                data = try await get(usageURL, headers: bearer(key))
+                return FetchResult(snapshot: try DevinEnterpriseUsage.parse(cyclesData: cyclesData,
+                                                                           budgetsData: budgetsData,
+                                                                           consumptionData: data,
+                                                                           now: now, fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
