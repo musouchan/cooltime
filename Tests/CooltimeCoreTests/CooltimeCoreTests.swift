@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 152)
+        XCTAssertEqual(ManualCatalog.all.count, 151)
         // Spark is delivered on PR #13 and can be added independently of this stack.
         let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
         XCTAssertEqual(Catalog.all.count + pendingSpark, 185)
@@ -1210,5 +1210,45 @@ final class Context7UsageTests: XCTestCase {
         ] {
             XCTAssertThrowsError(try Context7Usage.parse(d(fixture), fetchedAt: at))
         }
+    }
+}
+
+
+final class MakeUsageTests: XCTestCase {
+    private let at = Date(timeIntervalSince1970: 1_800_000_000)
+    private func d(_ s: String) -> Data { Data(s.utf8) }
+
+    func testParsesPastThirtyDayCenticreditUsage() throws {
+        let fixture = #"{ "data":[{"date":"2026-11-05","operations":9,"dataTransfer":135,"centicredits":900},{"date":"2026-11-06","operations":15,"dataTransfer":157,"centicredits":1500}] }"#
+        let snapshot = try MakeUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].label, "直近30日の消費実績")
+        XCTAssertEqual(snapshot.windows[0].reportedAmount, 2400)
+        XCTAssertEqual(snapshot.windows[0].reportedUnit, "centicredits")
+        XCTAssertNil(snapshot.windows[0].resetsAt)
+        XCTAssertNil(snapshot.credit)
+    }
+
+    func testParsesNoUsage() throws {
+        let snapshot = try MakeUsage.parse(d(#"{ "data":[] }"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.reportedAmount, 0)
+    }
+
+    func testBuildsAllowlistedZoneURLAndParsesConfig() throws {
+        let config = try MakeUsage.configuration(from: "eu1|12345|secret-token")
+        XCTAssertEqual(config.region, "eu1")
+        XCTAssertEqual(config.organizationID, "12345")
+        XCTAssertEqual(config.token, "secret-token")
+        XCTAssertEqual(try MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
+                       "https://eu1.make.com/api/v2/organizations/12345/usage?organizationTimezone=true")
+    }
+
+    func testRejectsUnknownZoneAndMalformedConfig() {
+        for value in ["", "eu1|123|", "eu9|123|token", "eu1|not-an-id|token", "eu1|123|token|extra"] {
+            XCTAssertThrowsError(try MakeUsage.configuration(from: value))
+        }
+        XCTAssertThrowsError(try MakeUsage.usageURL(region: "example.com", organizationID: "123"))
+        XCTAssertThrowsError(try MakeUsage.parse(d(#"{ "data":[{"centicredits":-1}] }"#), fetchedAt: at))
+        XCTAssertThrowsError(try MakeUsage.parse(d("not json"), fetchedAt: at))
     }
 }

@@ -191,6 +191,11 @@ enum Fetchers {
             case "sheet-112":
                 data = try await get("https://context7.com/api/v2/usage?days=30", headers: bearer(key))
                 return FetchResult(snapshot: try Context7Usage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-113":
+                let config = try MakeUsage.configuration(from: key)
+                data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
+                                     headers: ["Authorization": "Token \(config.token)"])
+                return FetchResult(snapshot: try MakeUsage.parse(data, fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
