@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 154)
+        XCTAssertEqual(ManualCatalog.all.count, 153)
         // Spark is delivered on PR #13 and can be added independently of this stack.
         let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
         XCTAssertEqual(Catalog.all.count + pendingSpark, 185)
@@ -1134,6 +1134,31 @@ final class HeadshotProCreditsTests: XCTestCase {
             "not json"
         ] {
             XCTAssertThrowsError(try HeadshotProCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class ExaCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialTeamCreditBalance() throws {
+        let snapshot = try ExaCredits.parse(d(#"{"credits_usd":412.37,"expiring_credits":[{"amount_usd":20,"expires_at":"2026-12-01T00:00:00Z"}],"metadata":{"generated_at":"2026-11-04T19:00:00Z"}}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 412.37)
+        XCTAssertEqual(snapshot.credit?.currency, "USD")
+        XCTAssertNil(snapshot.credit?.resetsAt)
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testParsesZeroBalance() throws {
+        let snapshot = try ExaCredits.parse(d(#"{"credits_usd":0}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 0)
+    }
+
+    func testRejectsMissingMalformedAndNegativeBalance() {
+        for fixture in ["{}", #"{"credits_usd":-0.01}"#, "not json"] {
+            XCTAssertThrowsError(try ExaCredits.parse(d(fixture), fetchedAt: at))
         }
     }
 }

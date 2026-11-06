@@ -185,6 +185,9 @@ enum Fetchers {
                 data = try await get(TogetherBilling.usageURL(now: now), headers: bearer(key))
                 return FetchResult(snapshot: try TogetherBilling.parse(data, expectedMonth: TogetherBilling.monthString(now),
                                                                        fetchedAt: now), identity: nil)
+            case "sheet-104":
+                data = try await get("https://admin-api.exa.ai/team-management/credits", headers: ["x-api-key": key])
+                return FetchResult(snapshot: try ExaCredits.parse(data, fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
