@@ -128,7 +128,7 @@ enum Fetchers {
                 data = try await get(DeepL.endpoint(forKey: key), headers: ["Authorization": "DeepL-Auth-Key \(key)"])
                 return FetchResult(snapshot: try DeepL.parse(data, fetchedAt: now), identity: nil)
             case "photoroom":
-                data = try await get("https://image-api.photoroom.com/v1/account", headers: ["x-api-key": key])
+                data = try await get("https://image-api.photoroom.com/v2/account", headers: ["x-api-key": key])
                 return FetchResult(snapshot: try Photoroom.parse(data, fetchedAt: now), identity: nil)
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
