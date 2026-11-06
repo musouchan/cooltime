@@ -181,6 +181,10 @@ enum Fetchers {
                 let body = try XAIUsage.usageRequestBody(now: now)
                 data = try await postJSON(XAIUsage.usageURL(teamID: teamID), headers: headers, body: body)
                 return FetchResult(snapshot: try XAIUsage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-93":
+                data = try await get(TogetherBilling.usageURL(now: now), headers: bearer(key))
+                return FetchResult(snapshot: try TogetherBilling.parse(data, expectedMonth: TogetherBilling.monthString(now),
+                                                                       fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
