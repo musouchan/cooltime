@@ -30,7 +30,8 @@ enum AccountCLI {
         let deadline = DispatchWorkItem {
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 20, execute: deadline)
+        let expires = DispatchTime.now() + 20
+        DispatchQueue.global().asyncAfter(deadline: expires, execute: deadline)
         defer {
             deadline.cancel()
             if process.isRunning { kill(process.processIdentifier, SIGKILL) }
@@ -38,11 +39,25 @@ enum AccountCLI {
         }
 
         var output = Data()
-        while let chunk = try stdout.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
-            guard output.count + chunk.count <= 64 * 1024 else {
+        let descriptor = stdout.fileHandleForReading.fileDescriptor
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        // Even if a CLI wrapper spawns a child, inherited stdout must not keep this read blocked.
+        while true {
+            guard DispatchTime.now() < expires else {
+                throw ParseError.unsupported("\(name) CLIの応答がタイムアウトしました")
+            }
+            var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&event, 1, 250)
+            if ready == 0 || (ready < 0 && errno == EINTR) { continue }
+            guard ready > 0 else { throw ParseError.unsupported(failureMessage) }
+            let count = buffer.withUnsafeMutableBytes { Darwin.read(descriptor, $0.baseAddress, $0.count) }
+            if count == 0 { break }
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { throw ParseError.unsupported(failureMessage) }
+            guard output.count + count <= 64 * 1024 else {
                 throw ParseError.unsupported("\(name) CLIの応答が大きすぎます")
             }
-            output.append(chunk)
+            output.append(contentsOf: buffer.prefix(count))
         }
         process.waitUntilExit()
         guard process.terminationReason == .exit else {
