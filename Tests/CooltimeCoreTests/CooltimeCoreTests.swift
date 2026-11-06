@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 160)
+        XCTAssertEqual(ManualCatalog.all.count, 159)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -1091,6 +1091,32 @@ final class ElicitUsageTests: XCTestCase {
             "not json"
         ] {
             XCTAssertThrowsError(try ElicitUsage.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class HeadshotProCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOrganizationCreditBalance() throws {
+        let snapshot = try HeadshotProCredits.parse(d(#"{"success":true,"credits":100}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 100)
+        XCTAssertEqual(snapshot.credit?.currency, "credits")
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testRejectsMissingMalformedErrorAndInvalidCredits() {
+        for fixture in [
+            "{}",
+            #"{"success":false,"credits":100}"#,
+            #"{"success":true}"#,
+            #"{"success":true,"credits":-1}"#,
+            #"{"success":true,"credits":1.5}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try HeadshotProCredits.parse(d(fixture), fetchedAt: at))
         }
     }
 }
