@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 162)
+        XCTAssertEqual(ManualCatalog.all.count, 161)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -1039,6 +1039,25 @@ final class ApolloCreditsTests: XCTestCase {
             "not json"
         ] {
             XCTAssertThrowsError(try ApolloCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class PoeBalanceTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialCurrentPointBalance() throws {
+        let snapshot = try PoeBalance.parse(d(#"{"current_point_balance":1500}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 1500)
+        XCTAssertEqual(snapshot.credit?.currency, "points")
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testRejectsMissingMalformedNegativeAndFractionalBalance() {
+        for fixture in ["{}", #"{"current_point_balance":-1}"#, #"{"current_point_balance":1.5}"#, "not json"] {
+            XCTAssertThrowsError(try PoeBalance.parse(d(fixture), fetchedAt: at))
         }
     }
 }
