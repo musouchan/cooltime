@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 154)
+        XCTAssertEqual(ManualCatalog.all.count, 153)
         XCTAssertEqual(Catalog.all.count, 185)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -1157,6 +1157,56 @@ final class ExaCreditsTests: XCTestCase {
     func testRejectsMissingMalformedAndNegativeBalance() {
         for fixture in ["{}", #"{"credits_usd":-0.01}"#, "not json"] {
             XCTAssertThrowsError(try ExaCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class Context7UsageTests: XCTestCase {
+    private let at = Date(timeIntervalSince1970: 1_800_000_000)
+    private func d(_ s: String) -> Data { Data(s.utf8) }
+
+    func testParsesFreePlanHardRequestCapAndReset() throws {
+        let fixture = #"{ "plan":"free", "usageResetsAt":"2026-12-01T00:00:00.000Z", "member":{"requests":412,"includedInPlan":1000}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        let member = try XCTUnwrap(snapshot.windows.first { $0.label == "月のリクエスト" })
+        XCTAssertEqual(member.remainingCount, 588)
+        XCTAssertEqual(member.usedPercent ?? -1, 41.2, accuracy: 0.001)
+        XCTAssertEqual(member.resetsAt, Date(timeIntervalSince1970: 1_795_478_400))
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testParsesPaidUsageCostAndConfiguredSpendingLimit() throws {
+        let fixture = #"{ "plan":"pro", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":2340,"includedInPlan":2000}, "teamspace":{"extraRequests":340,"extraCostUsd":1.7,"spendingLimitUsd":50,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        let member = try XCTUnwrap(snapshot.windows.first { $0.label == "本人の月間リクエスト数" })
+        XCTAssertEqual(member.reportedAmount, 2340)
+        XCTAssertEqual(member.reportedUnit, "requests")
+        XCTAssertNil(member.remainingCount)
+        let cost = try XCTUnwrap(snapshot.windows.first { $0.label == "Teamspace追加料金上限" })
+        XCTAssertEqual(cost.usedPercent ?? -1, 3.4, accuracy: 0.001)
+        XCTAssertEqual(cost.resetsAt, Date(timeIntervalSince1970: 1_795_478_400))
+        XCTAssertEqual(snapshot.windows.first { $0.label == "Teamspace追加料金" }?.reportedAmount, 1.7)
+    }
+
+    func testDoesNotInventRemainingWhenSpendingIsUncappedOrPayg() throws {
+        let fixture = #"{ "plan":"payg", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":10,"includedInPlan":0}, "teamspace":{"extraRequests":10,"extraCostUsd":0.05,"spendingLimitUsd":null,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        XCTAssertNil(snapshot.windows.first { $0.label == "月のリクエスト" })
+        XCTAssertNil(snapshot.windows.first { $0.label == "Teamspace追加料金上限" })
+        XCTAssertEqual(snapshot.windows.first { $0.label == "本人の月間リクエスト数" }?.reportedAmount, 10)
+        XCTAssertEqual(snapshot.windows.first { $0.label == "Teamspace追加料金" }?.reportedAmount, 0.05)
+    }
+
+    func testRejectsMissingMalformedAndInvalidUsageFields() {
+        for fixture in [
+            "{}",
+            #"{ "plan":"free", "usageResetsAt":"bad", "member":{"requests":1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#,
+            #"{ "plan":"free", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":-1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#,
+            #"{ "plan":"pro", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":-1,"spendingLimitUsd":null,"daily":[]} }"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try Context7Usage.parse(d(fixture), fetchedAt: at))
         }
     }
 }
