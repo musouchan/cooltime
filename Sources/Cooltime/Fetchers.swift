@@ -105,6 +105,16 @@ enum Fetchers {
         case .pixVerseCLI:
             let balance = try await Task.detached { try PixVerseCommand.balance() }.value
             return FetchResult(snapshot: balance, identity: nil)
+        case .polloCLI:
+            let balance = try await Task.detached {
+                let output = try AccountCLI.read(
+                    ["pollo", "account", "status", "--json"],
+                    name: "Pollo",
+                    failureMessage: "Pollo CLIで残高を取得できませんでした。ターミナルで pollo account status を確認してください"
+                )
+                return try PolloCLIUsage.parse(output, fetchedAt: Date())
+            }.value
+            return FetchResult(snapshot: balance, identity: nil)
         case .apiKey:
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
