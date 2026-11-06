@@ -25,6 +25,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>制限が戻ったことを、自分宛ての iMessage で知らせるために、「メッセージ」を操作します。</string>
 </dict></plist>
 PLIST
 codesign --force --deep --sign - "$app"

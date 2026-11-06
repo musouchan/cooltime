@@ -238,8 +238,10 @@ final class AppModel: ObservableObject {
             let result = try await Fetchers.fetch(account: account, service: service)
             // 古い記録で、新しいデータを上書きしない。
             if result.snapshot.fetchedAt >= (snapshots[account.id]?.fetchedAt ?? .distantPast) {
+                let previous = snapshots[account.id]
                 snapshots[account.id] = result.snapshot
                 record(account, result.snapshot)
+                checkRecovery(account, service, previous: previous, current: result.snapshot)
             }
             apply(result.identity, to: account.id)
             errors[account.id] = result.warning
@@ -248,6 +250,29 @@ final class AppModel: ObservableObject {
             errors[account.id] = error.localizedDescription
         }
         now = clock.now
+    }
+
+    // MARK: 戻ったときの通知（自分宛ての iMessage）
+
+    private static let limitedKey = "limitedAccountIDs"
+
+    /// 制限中と分かったアカウント。アプリを閉じていた間に戻ったものも、次の取得で気づけるように、覚えておく。
+    private var limitedIDs: Set<UUID> {
+        get { Set((UserDefaults.standard.stringArray(forKey: Self.limitedKey) ?? []).compactMap(UUID.init)) }
+        set { UserDefaults.standard.set(newValue.map(\.uuidString), forKey: Self.limitedKey) }
+    }
+
+    private func checkRecovery(_ account: Account, _ service: ServiceDef, previous: Snapshot?, current: Snapshot) {
+        var limited = limitedIDs
+        let wasLimited = limited.contains(account.id)
+        let state = evaluate(current, now: clock.now)
+        if case .limited = state { limited.insert(account.id) }
+        let recovery = detectRecovery(wasLimited: wasLimited, previous: previous, current: current, now: clock.now)
+        if recovery == .limitEnded { limited.remove(account.id) }
+        if limited != limitedIDs { limitedIDs = limited }
+        guard let recovery, IMessageNotifier.isEnabled else { return }
+        let text = recoveryMessage(serviceName: service.name, recovery: recovery)
+        Task { try? await IMessageNotifier.send(text, to: IMessageNotifier.handle) }
     }
 
     func refreshAll() async {
