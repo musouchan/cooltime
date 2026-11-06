@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 164)
+        XCTAssertEqual(ManualCatalog.all.count, 163)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -993,5 +993,23 @@ final class V0BillingTests: XCTestCase {
         ] {
             XCTAssertThrowsError(try V0Billing.parse(Data(json.utf8), fetchedAt: fetchedAt))
         }
+    }
+}
+
+
+final class TavilyUsageTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+    func testParsesOfficialKeyPlanAndPaygoUsage() throws {
+        let json = #"{"key":{"usage":150,"limit":1000},"account":{"plan_usage":500,"plan_limit":15000,"paygo_usage":25,"paygo_limit":100}}"#
+        let snapshot = try TavilyUsage.parse(d(json), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 3)
+        XCTAssertEqual(snapshot.windows[0].remainingCount, 850)
+        XCTAssertEqual(snapshot.windows[1].usedPercent ?? 0, 100.0 / 30.0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.windows[2].remainingCount, 75)
+    }
+    func testRejectsResponseWithoutUsageLimits() {
+        XCTAssertThrowsError(try TavilyUsage.parse(d(#"{"key":{"usage":3,"limit":null},"account":{}}"#), fetchedAt: at))
+        XCTAssertThrowsError(try TavilyUsage.parse(d("not json"), fetchedAt: at))
     }
 }

@@ -196,6 +196,34 @@ public enum DeepSeek {
     }
 }
 
+// MARK: - Tavily Usage API
+
+public enum TavilyUsage {
+    /// GET https://api.tavily.com/usage. Counts and limits are returned as documented by Tavily.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        var windows: [UsageWindow] = []
+        if let key = root["key"] as? [String: Any],
+           let usage = number(key["usage"]), let limit = number(key["limit"]), limit > 0 {
+            windows.append(window(label: "APIキーの利用枠", used: usage, limit: limit))
+        }
+        if let account = root["account"] as? [String: Any] {
+            if let usage = number(account["plan_usage"]), let limit = number(account["plan_limit"]), limit > 0 {
+                windows.append(window(label: "アカウントのプラン枠", used: usage, limit: limit))
+            }
+            if let usage = number(account["paygo_usage"]), let limit = number(account["paygo_limit"]), limit > 0 {
+                windows.append(window(label: "従量課金枠", used: usage, limit: limit))
+            }
+        }
+        guard !windows.isEmpty else { throw ParseError.invalid("usage と対応する limit が見つかりません") }
+        return Snapshot(windows: windows, fetchedAt: fetchedAt)
+    }
+
+    private static func window(label: String, used: Double, limit: Double) -> UsageWindow {
+        UsageWindow(label: label, usedPercent: used / limit * 100, remainingCount: max(0, limit - used))
+    }
+}
+
 // MARK: - 追加のAPI（スプレッドシートの調査どおり。実機で要確認）
 //
 // 公式の資料を、この開発環境から読めなかったため、入口と項目名は、調査表に書かれたものと、
