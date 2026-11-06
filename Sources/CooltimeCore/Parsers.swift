@@ -224,6 +224,48 @@ public enum TavilyUsage {
     }
 }
 
+// MARK: - Apollo Credit Usage API
+
+public enum ApolloCredits {
+    /// POST https://api.apollo.io/api/v1/usage_stats/credit_usage_stats
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let stats = root["credit_usage_stats"] as? [String: Any] else {
+            throw ParseError.invalid("credit_usage_stats がありません")
+        }
+        let cycle = root["current_credit_cycle"] as? [String: Any]
+        let resetsAt = parseDate(cycle?["end_date"])
+        var windows: [UsageWindow] = []
+        for key in stats.keys.sorted() {
+            guard let item = stats[key] as? [String: Any],
+                  let limit = number(item["limit"]), let consumed = number(item["consumed"]),
+                  let remaining = number(item["left_over"]), limit >= 0, consumed >= 0, remaining >= 0 else {
+                throw ParseError.invalid("\(key) の limit / consumed / left_over がありません")
+            }
+            // limit 0 は契約に含まれない credit type。
+            guard limit > 0 else { continue }
+            let label = labels[key] ?? key
+            windows.append(UsageWindow(label: label, usedPercent: consumed / limit * 100,
+                                       remainingCount: remaining, resetsAt: resetsAt))
+        }
+        guard !windows.isEmpty else { throw ParseError.unsupported("このプランに取得可能なクレジット枠がありません") }
+        return Snapshot(windows: windows, fetchedAt: fetchedAt)
+    }
+
+    private static let labels: [String: String] = [
+        "lead_credit": "リードクレジット",
+        "direct_dial_credit": "直通電話クレジット",
+        "export_credit": "エクスポートクレジット",
+        "conversation_credit": "会話クレジット",
+        "ai_credit": "AIクレジット",
+        "power_up_credit": "Power Upクレジット",
+        "inbound_website_visitor_credit": "Inbound訪問者クレジット",
+        "contact_website_visitor_credit": "Contact訪問者クレジット",
+        "web_search_record_credit": "Web検索レコードクレジット",
+        "dialer": "ダイヤラー利用分（分）"
+    ]
+}
+
 // MARK: - 追加のAPI（スプレッドシートの調査どおり。実機で要確認）
 //
 // 公式の資料を、この開発環境から読めなかったため、入口と項目名は、調査表に書かれたものと、
