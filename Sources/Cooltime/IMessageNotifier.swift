@@ -27,7 +27,8 @@ enum IMessageNotifier {
         "end run",
     ]
 
-    static var isEnabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+    /// 既定はオン。ただし、宛先が空のうちは、何も送らない。
+    static var isEnabled: Bool { (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true }
     static var handle: String { (UserDefaults.standard.string(forKey: handleKey) ?? "").trimmingCharacters(in: .whitespaces) }
 
     static func send(_ text: String, to handle: String) async throws {

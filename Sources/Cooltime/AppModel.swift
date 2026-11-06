@@ -270,7 +270,7 @@ final class AppModel: ObservableObject {
         let recovery = detectRecovery(wasLimited: wasLimited, previous: previous, current: current, now: clock.now)
         if recovery == .limitEnded { limited.remove(account.id) }
         if limited != limitedIDs { limitedIDs = limited }
-        guard let recovery, IMessageNotifier.isEnabled else { return }
+        guard let recovery, IMessageNotifier.isEnabled, !IMessageNotifier.handle.isEmpty else { return }
         let text = recoveryMessage(serviceName: service.name, recovery: recovery)
         Task { try? await IMessageNotifier.send(text, to: IMessageNotifier.handle) }
     }

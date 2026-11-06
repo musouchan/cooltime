@@ -11,7 +11,7 @@ struct CharacterSettingsView: View {
     @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
     @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
     @AppStorage(CharacterPrefs.compactKey) private var compact = false
-    @AppStorage(IMessageNotifier.enabledKey) private var notifyEnabled = false
+    @AppStorage(IMessageNotifier.enabledKey) private var notifyEnabled = true
     @AppStorage(IMessageNotifier.handleKey) private var notifyHandle = ""
     @State private var notifyResult: String?
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
