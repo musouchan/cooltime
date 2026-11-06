@@ -113,6 +113,13 @@ enum Fetchers {
                     try await get(url, headers: ["X-Figma-Token": config.token], allowRedirects: false)
                 }
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "augment-credit-usage":
+                let config = try AugmentCreditUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 2)
+                let snapshot = try await AugmentCreditUsage.fetch(email: config.email, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(config.token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
