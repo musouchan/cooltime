@@ -11,7 +11,7 @@ final class OpenAIPlatformUsageTests: XCTestCase {
         let snapshot = try OpenAIPlatformUsage.parse(limitData: limit, costsData: costs, now: now, fetchedAt: now)
         let window = try XCTUnwrap(snapshot.windows.first)
         XCTAssertEqual(window.label, "OpenAI 組織月次ハード上限")
-        XCTAssertEqual(window.remainingCount, 80.25, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(window.remainingCount), 80.25, accuracy: 0.001)
         XCTAssertEqual(window.usedPercent ?? -1, 19.75, accuracy: 0.001)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
