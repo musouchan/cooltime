@@ -174,6 +174,13 @@ enum Fetchers {
                                         "anthropic-beta": AnthropicUsage.betaHeader]
                 data = try await get(AnthropicUsage.costsURL(now: now), headers: anthropicHeaders)
                 return FetchResult(snapshot: try AnthropicUsage.parse(data), identity: nil)
+            case "sheet-90":
+                let headers = bearer(key).merging(["Content-Type": "application/json"]) { $1 }
+                let validation = try await get("https://management-api.x.ai/auth/management-keys/validation", headers: bearer(key))
+                let teamID = try XAIUsage.teamID(from: validation)
+                let body = try XAIUsage.usageRequestBody(now: now)
+                data = try await postJSON(XAIUsage.usageURL(teamID: teamID), headers: headers, body: body)
+                return FetchResult(snapshot: try XAIUsage.parse(data, fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
@@ -215,6 +222,25 @@ enum Fetchers {
     }
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }
+
+    private static func postJSON(_ url: String, headers: [String: String], body: Data) async throws -> Data {
+        var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.httpBody = body
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        do {
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let code = (res as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else { throw FetchError.http(code) }
+            return data
+        } catch let e as FetchError {
+            throw e
+        } catch {
+            throw FetchError.network
+        }
+    }
 
     private static func post(_ url: String, headers: [String: String]) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
