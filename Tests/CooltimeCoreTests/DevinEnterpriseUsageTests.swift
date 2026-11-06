@@ -19,7 +19,7 @@ final class DevinEnterpriseUsageTests: XCTestCase {
         )
         let window = try XCTUnwrap(snapshot.windows.first)
         XCTAssertEqual(window.label, "Enterprise ACU予算")
-        XCTAssertEqual(window.usedPercent, 25, accuracy: 0.001)
+        XCTAssertEqual(window.usedPercent ?? -1, 25, accuracy: 0.001)
         XCTAssertEqual(window.remainingCount, 375)
         XCTAssertEqual(window.resetsAt, Date(timeIntervalSince1970: 1_801_000_000))
         XCTAssertEqual(snapshot.fetchedAt, now)

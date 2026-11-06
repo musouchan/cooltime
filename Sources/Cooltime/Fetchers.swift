@@ -155,7 +155,6 @@ enum Fetchers {
                 let cyclesData = try await get("https://api.devin.ai/v3/enterprise/consumption/cycles?first=200", headers: bearer(key))
                 let cycle = try DevinEnterpriseUsage.currentCycle(in: cyclesData, now: now)
                 let budgetsData = try await get("https://api.devin.ai/v3beta1/enterprise/usage-policies/budgets?first=200", headers: bearer(key))
-                let limit = try DevinEnterpriseUsage.rootBudgetLimit(in: budgetsData)
                 let usageURL = "https://api.devin.ai/v3/enterprise/consumption/daily?time_after=\(cycle.after)&time_before=\(cycle.before)"
                 data = try await get(usageURL, headers: bearer(key))
                 return FetchResult(snapshot: try DevinEnterpriseUsage.parse(cyclesData: cyclesData,
