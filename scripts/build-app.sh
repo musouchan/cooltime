@@ -25,8 +25,16 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppTransportSecurity</key><dict>
+    <key>NSExceptionDomains</key><dict>
+      <key>127.0.0.1</key><dict>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+      </dict>
+    </dict>
+  </dict>
 </dict></plist>
 PLIST
 codesign --force --deep --sign - "$app"
 (cd build && ditto -c -k --keepParent Cooltime.app Cooltime.zip)
 echo "作成しました: build/Cooltime.zip"
+

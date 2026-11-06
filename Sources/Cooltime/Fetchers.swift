@@ -120,6 +120,11 @@ enum Fetchers {
                     try await get(url, headers: bearer(config.token), allowRedirects: false)
                 }
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "opencode-go-usage":
+                let config = try OpenCodeGoUsage.configuration(from: key)
+                data = try await get(config.url, headers: ["Authorization": config.authorization],
+                                     allowRedirects: false, loopbackOnly: true)
+                return FetchResult(snapshot: try OpenCodeGoUsage.parse(data, workspace: config.workspace, fetchedAt: now), identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
@@ -318,12 +323,19 @@ enum Fetchers {
         }
     }
 
-    private static func get(_ url: String, headers: [String: String], allowRedirects: Bool = true) async throws -> Data {
+    private static func get(_ url: String, headers: [String: String], allowRedirects: Bool = true, loopbackOnly: Bool = false) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
         // Cookie・キャッシュは使わない。
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
+        if loopbackOnly {
+            guard req.url?.host == "127.0.0.1", req.url?.scheme == "http", !allowRedirects else { throw FetchError.network }
+            cfg.connectionProxyDictionary = [:]
+            cfg.urlCache = nil
+            cfg.urlCredentialStorage = nil
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+        }
         do {
             let (data, res) = try await URLSession(configuration: cfg).data(for: req, delegate: allowRedirects ? nil : BlockRedirects())
             let code = (res as? HTTPURLResponse)?.statusCode ?? 0
