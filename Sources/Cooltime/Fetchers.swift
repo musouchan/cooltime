@@ -208,6 +208,11 @@ enum Fetchers {
                 data = try await get(url, headers: ["DD-API-KEY": config.apiKey,
                                                      "DD-APPLICATION-KEY": config.applicationKey], allowRedirects: false)
                 return FetchResult(snapshot: try DatadogBitsUsage.parse(data, fetchedAt: now), identity: nil)
+            case "fal-api-balance":
+                guard key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw FetchError.noKey }
+                data = try await get("https://api.fal.ai/v1/account/billing?expand=credits",
+                                     headers: ["Authorization": "Key \(key)"], allowRedirects: false)
+                return FetchResult(snapshot: try FalBilling.parse(data, fetchedAt: now), identity: nil)
             case "sheet-113":
                 let config = try MakeUsage.configuration(from: key)
                 data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
