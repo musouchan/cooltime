@@ -140,6 +140,9 @@ enum Fetchers {
                 let allowance = PlanCatalog.option(serviceID: "copilot", id: account.planID)?.monthlyCredits
                 return FetchResult(snapshot: try CopilotCredits.parse(data, allowance: allowance, fetchedAt: now),
                                    identity: nil)
+            case "heygen-api":
+                data = try await get(HeyGen.endpoint, headers: ["X-Api-Key": key])
+                return FetchResult(snapshot: try HeyGen.parse(data, fetchedAt: now), identity: nil)
             case "synthesia":
                 data = try await get("https://developers.synthesia.io/api/billing/credits", headers: bearer(key))
                 return FetchResult(snapshot: try Synthesia.parse(data, fetchedAt: now), identity: nil)
