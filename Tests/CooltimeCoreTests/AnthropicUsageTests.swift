@@ -17,10 +17,10 @@ final class AnthropicUsageTests: XCTestCase {
         XCTAssertEqual(snapshot.fetchedAt, Date(timeIntervalSince1970: 1_800_000_000))
     }
 
-    func testCostsURLCoversCurrentUTCMonth() {
-        let value = AnthropicUsage.costsURL(now: now)
-        XCTAssertTrue(value.contains("starting_at=2027-01-01T00%3A00%3A00Z"))
-        XCTAssertTrue(value.contains("ending_at=2027-01-15T08%3A00%3A00Z"))
+    func testCostsURLCoversCurrentUTCMonth() throws {
+        let query = try XCTUnwrap(URLComponents(string: AnthropicUsage.costsURL(now: now))?.queryItems)
+        XCTAssertEqual(query.first { $0.name == "starting_at" }?.value, "2027-01-01T00:00:00Z")
+        XCTAssertEqual(query.first { $0.name == "ending_at" }?.value, "2027-01-15T08:00:00Z")
     }
 
     func testRejectsUnavailableRefreshMalformedAmountsAndPagination() {
