@@ -836,6 +836,38 @@ final class DocumentedAPITests: XCTestCase {
         XCTAssertEqual(PlanCatalog.options(for: "copilot").map(\.monthlyCredits), [1_500, 7_000, 20_000])
     }
 
+    func testHeyGenWalletAndCatalog() throws {
+        let response = #"{"data":{"billing_type":"wallet","wallet":{"currency":"usd","remaining_balance":42.5}}}"#
+        let credit = try XCTUnwrap(HeyGen.parse(d(response), fetchedAt: at).credit)
+        XCTAssertEqual(credit.amount, 42.5)
+        XCTAssertEqual(credit.currency, "USD")
+        XCTAssertNil(credit.resetsAt)
+        XCTAssertEqual(Catalog.service("heygen-api")?.method, .apiKey)
+    }
+
+    func testHeyGenSubscriptionKeepsSeparatePools() throws {
+        let response = #"{"data":{"billing_type":"subscription","subscription":{"credits":{"premium_credits":{"remaining":0,"resets_at":"2026-12-01T00:00:00Z"},"add_on_credits":{"remaining":12}}}}}"#
+        let windows = try HeyGen.parse(d(response), fetchedAt: at).windows
+        XCTAssertEqual(windows.map(\.remainingCount), [0, 12])
+        XCTAssertNotNil(windows.first?.resetsAt)
+        XCTAssertNil(windows.last?.resetsAt)
+    }
+
+    func testHeyGenUsageBasedNeedsBothAmountsAndRejectsInvalidWallet() throws {
+        let capped = #"{"data":{"billing_type":"usage_based","usage_based":{"spending_current_usd":15,"spending_cap_usd":25}}}"#
+        XCTAssertEqual(try HeyGen.parse(d(capped), fetchedAt: at).credit?.amount, 10)
+        for response in [
+            #"{"data":{"billing_type":"usage_based","usage_based":{"spending_current_usd":15,"spending_cap_usd":null}}}"#,
+            #"{"data":{"billing_type":"wallet","wallet":{"currency":"usd","remaining_balance":true}}}"#,
+            #"{"data":{"billing_type":"wallet","wallet":{"currency":"usd","remaining_balance":null}}}"#,
+            #"{"data":{"billing_type":"wallet","wallet":{"currency":"usd","remaining_balance":-1}}}"#,
+            #"{"error":{"message":"Unauthorized"}}"#,
+            "invalid JSON"
+        ] {
+            XCTAssertThrowsError(try HeyGen.parse(d(response), fetchedAt: at))
+        }
+    }
+
     func testSynthesiaDecimalStrings() throws {
         let json = #"{"period":{"startsAt":"2026-11-01T00:00:00Z","endsAt":"2026-12-01T00:00:00Z"},"credits":{"total":"1000.00","consumed":"250.50","available":"749.50","unit":"credits"}}"#
         let w = try Synthesia.parse(d(json), fetchedAt: at).windows.first
