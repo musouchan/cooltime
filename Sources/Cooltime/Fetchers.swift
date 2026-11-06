@@ -195,6 +195,13 @@ enum Fetchers {
                 let config = try BrowserbaseUsage.configuration(from: key)
                 data = try await get(config.url, headers: ["X-BB-API-Key": config.apiKey], allowRedirects: false)
                 return FetchResult(snapshot: try BrowserbaseUsage.parse(data, fetchedAt: now), identity: nil)
+            case "langsmith-trace-usage":
+                let config = try LangSmithUsage.configuration(from: key)
+                let period = LangSmithUsage.period(endingBefore: now)
+                let url = try LangSmithUsage.url(for: config.region, workspace: config.workspace, period: period)
+                data = try await get(url, headers: ["x-api-key": config.apiKey], allowRedirects: false)
+                return FetchResult(snapshot: try LangSmithUsage.parse(data, workspace: config.workspace, period: period,
+                                                                      fetchedAt: now), identity: nil)
             case "sheet-113":
                 let config = try MakeUsage.configuration(from: key)
                 data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),

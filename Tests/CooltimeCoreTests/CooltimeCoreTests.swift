@@ -863,7 +863,9 @@ final class ManualImportTests: XCTestCase {
         // Spark is delivered on PR #13 and can be added independently of this stack.
         let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
         // The automated option is separate from the existing manual service.
-        XCTAssertEqual(Catalog.all.count + pendingSpark, 186)
+        XCTAssertEqual(Catalog.all.count + pendingSpark, 187)
+        XCTAssertEqual(Catalog.service("sheet-116")?.method, .manual)
+        XCTAssertEqual(Catalog.service("langsmith-trace-usage")?.method, .apiKey)
         XCTAssertEqual(Catalog.service("sheet-106")?.method, .manual)
         XCTAssertEqual(Catalog.service("browserbase-usage")?.method, .apiKey)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
