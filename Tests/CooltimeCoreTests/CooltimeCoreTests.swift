@@ -860,7 +860,10 @@ final class ManualImportTests: XCTestCase {
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
         XCTAssertEqual(ManualCatalog.all.count, 165)
-        XCTAssertEqual(Catalog.all.count, 185)
+        // The automated option is separate from the existing manual service.
+        XCTAssertEqual(Catalog.all.count, 186)
+        XCTAssertEqual(Catalog.service("sheet-66")?.method, .manual)
+        XCTAssertEqual(Catalog.service("pollo-cli")?.method, .polloCLI)
         XCTAssertEqual(Catalog.service("sheet-55")?.method, .manual)
         XCTAssertEqual(Catalog.service("pixverse-cli")?.method, .pixVerseCLI)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)

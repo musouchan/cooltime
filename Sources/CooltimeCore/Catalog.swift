@@ -14,6 +14,8 @@ public enum FetchMethod: Sendable {
     case codexAppServer
     /// インストール済みの公式 PixVerse CLI に問い合わせる。
     case pixVerseCLI
+    /// インストール済みの公式 Pollo CLI に問い合わせる。
+    case polloCLI
     /// 公式 API をAPIキーで呼ぶ（更新ボタンのときだけ）。
     case apiKey
     /// 利用者が確認済みの数値を記録し、CSVで取り込む（自動通信なし）。
@@ -52,6 +54,10 @@ public enum Catalog {
         ServiceDef(id: "pixverse-cli", name: "PixVerse（CLI）", kind: .credit, method: .pixVerseCLI,
                    defaultPaymentURL: "https://app.pixverse.ai/subscribe",
                    bundleIDs: [], hint: "公式CLIでログイン後、更新で選択中のワークスペースの残高を取得します。",
+                   apiKeyHelp: nil),
+        ServiceDef(id: "pollo-cli", name: "Pollo AI（CLI）", kind: .credit, method: .polloCLI,
+                   defaultPaymentURL: "https://pollo.ai/pricing",
+                   bundleIDs: [], hint: "公式 Pollo CLIでログイン後、更新でCLIの選択中プロフィールの残クレジットを取得します。",
                    apiKeyHelp: nil),
         ServiceDef(id: "elevenlabs", name: "ElevenLabs", kind: .subscription, method: .apiKey,
                    defaultPaymentURL: "https://elevenlabs.io/app/subscription",
