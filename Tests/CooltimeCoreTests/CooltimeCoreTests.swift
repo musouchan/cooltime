@@ -1172,7 +1172,7 @@ final class Context7UsageTests: XCTestCase {
         let member = try XCTUnwrap(snapshot.windows.first { $0.label == "月のリクエスト" })
         XCTAssertEqual(member.remainingCount, 588)
         XCTAssertEqual(member.usedPercent ?? -1, 41.2, accuracy: 0.001)
-        XCTAssertEqual(member.resetsAt, Date(timeIntervalSince1970: 1_795_478_400))
+        XCTAssertEqual(member.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
         XCTAssertEqual(snapshot.fetchedAt, at)
     }
 
@@ -1185,7 +1185,7 @@ final class Context7UsageTests: XCTestCase {
         XCTAssertNil(member.remainingCount)
         let cost = try XCTUnwrap(snapshot.windows.first { $0.label == "Teamspace追加料金上限" })
         XCTAssertEqual(cost.usedPercent ?? -1, 3.4, accuracy: 0.001)
-        XCTAssertEqual(cost.resetsAt, Date(timeIntervalSince1970: 1_795_478_400))
+        XCTAssertEqual(cost.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
         XCTAssertEqual(snapshot.windows.first { $0.label == "Teamspace追加料金" }?.reportedAmount, 1.7)
     }
 
