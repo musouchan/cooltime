@@ -5,9 +5,6 @@ import Foundation
 /// IDs are tied to source sheet row as of 2026-11-05; do not silently renumber persisted accounts.
 public enum ManualCatalog {
     public static let all: [ServiceDef] = [
-        ServiceDef(id: "sheet-11", name: "Google Antigravity", kind: .credit, method: .manual,
-                   defaultPaymentURL: "", bundleIDs: [],
-                   hint: "手動入力・CSV（自動取得未対応）｜モデル別クォータ、回復時刻", apiKeyHelp: nil),
         ServiceDef(id: "sheet-12", name: "Gemini CLI", kind: .credit, method: .manual,
                    defaultPaymentURL: "", bundleIDs: [],
                    hint: "手動入力・CSV（自動取得未対応）｜モデル別クォータ、利用統計", apiKeyHelp: nil),
