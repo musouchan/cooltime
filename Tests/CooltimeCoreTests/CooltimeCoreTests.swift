@@ -919,3 +919,40 @@ final class ManualImportTests: XCTestCase {
                                                       now: later))
     }
 }
+
+final class CursorTeamSpendTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_793_880_000)
+    private func data(_ text: String) -> Data { Data(text.utf8) }
+
+    func testTeamSpendSumsCurrentCycleWithoutInventingRemaining() throws {
+        let json = #"{"teamMemberSpend":[{"email":"a@example.com","overallSpendCents":250},{"email":"b@example.com","overallSpendCents":175.5}],"pagination":{"hasNextPage":false}}"#
+        let snapshot = try CursorTeamSpend.parse(data(json), fetchedAt: now)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertTrue(snapshot.windows[0].label.contains("$4.25"))
+        XCTAssertNil(snapshot.windows[0].remainingCount)
+        XCTAssertNil(snapshot.windows[0].usedPercent)
+        XCTAssertNil(snapshot.windows[0].resetsAt)
+        XCTAssertNil(snapshot.credit)
+        XCTAssertEqual(snapshot.fetchedAt, now)
+        XCTAssertEqual(Catalog.service("sheet-14")?.method, .apiKey)
+        XCTAssertEqual(Catalog.all.filter { $0.id == "sheet-14" }.count, 1)
+    }
+
+    func testMissingOrPartialDataFailsClosed() {
+        for json in [
+            #"{}"#,
+            #"{"teamMemberSpend":[{"email":"a@example.com"}]}"#,
+            #"{"teamMemberSpend":[{"overallSpendCents":-1}]}"#,
+            #"{"teamMemberSpend":[{"overallSpendCents":100}],"pagination":{"hasNextPage":true}}"#,
+            #"{"teamMemberSpend":[{"overallSpendCents":"unknown"}]}"#
+        ] {
+            XCTAssertThrowsError(try CursorTeamSpend.parse(data(json), fetchedAt: now))
+        }
+    }
+
+    func testEmptyTeamMeansZeroSpendNotZeroRemaining() throws {
+        let snapshot = try CursorTeamSpend.parse(data(#"{"teamMemberSpend":[]}"#), fetchedAt: now)
+        XCTAssertTrue(snapshot.windows[0].label.contains("$0.00"))
+        XCTAssertNil(snapshot.windows[0].remainingCount)
+    }
+}
