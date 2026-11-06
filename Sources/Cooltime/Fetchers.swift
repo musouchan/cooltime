@@ -148,6 +148,9 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-29":
+                data = try await get("https://api.v0.dev/v1/user/plan", headers: bearer(key))
+                return FetchResult(snapshot: try V0Billing.parse(data, fetchedAt: now), identity: nil)
             case "copilot":
                 let userData = try await get("https://api.github.com/user", headers: githubHeaders(key))
                 let login = try GitHubUser.login(userData)

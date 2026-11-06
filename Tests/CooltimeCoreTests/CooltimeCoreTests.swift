@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 165)
+        XCTAssertEqual(ManualCatalog.all.count, 164)
         XCTAssertEqual(Catalog.all.count, 184)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -963,6 +963,35 @@ final class AntigravityStatuslineTests: XCTestCase {
             "not json"
         ] {
             XCTAssertThrowsError(try AntigravityStatusline.parse(data(json), fetchedAt: fetchedAt), "Should reject: \(json)")
+        }
+    }
+}
+
+
+final class V0BillingTests: XCTestCase {
+    private let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testParsesRemainingCreditsAndBillingCycleEnd() throws {
+        let json = #"{"object":"plan","plan":"plus","billingCycle":{"start":1717430400,"end":1720108800},"balance":{"remaining":12000,"total":20000}}"#
+        let snapshot = try V0Billing.parse(Data(json.utf8), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.credit?.amount, 12000)
+        XCTAssertEqual(snapshot.credit?.currency, "credits")
+        XCTAssertEqual(snapshot.credit?.resetsAt, Date(timeIntervalSince1970: 1_720_108_800))
+        XCTAssertEqual(snapshot.credit?.note, "v0 plus")
+        XCTAssertEqual(snapshot.fetchedAt, fetchedAt)
+        XCTAssertTrue(snapshot.windows.isEmpty)
+    }
+
+    func testRejectsMissingMalformedAndNegativeBalance() {
+        for json in [
+            "{}",
+            #"{"balance":{}}"#,
+            #"{"balance":{"remaining":-1}}"#,
+            #"{"balance":{"remaining":"unknown"}}"#,
+            #"{"billingCycle":{"end":"later"},"balance":{"remaining":1}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try V0Billing.parse(Data(json.utf8), fetchedAt: fetchedAt))
         }
     }
 }
