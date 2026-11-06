@@ -18,7 +18,7 @@
 | 51 | デザイン・画像・動画 | Luma Dream Machine API | ◎ 公式API候補 | 実装済み | 公式の資料で入口と項目名を確認済み（実キーでの動作は要確認） |
 | 59 | デザイン・画像・動画 | Synthesia | ◎ 公式API候補 | 実装済み | `GET /api/billing/credits`（Bearer）。total / available と、期間の終わり |
 | 71 | リサーチ・業務 | Poe | ○ Creator API履歴 | 今回は見送り | Creator API の履歴で、一般のチャットの利用を網羅するか未確認 |
-| 86 | LLM・生成API | OpenAI Platform API | ○ 条件付き | 今回は見送り | 管理者キーが必要。残高APIではなく、費用と予算上限からの計算 |
+| 86 | LLM・生成API | OpenAI Platform API | ○ 公式Admin API | 実装済み（PR #27／CI待ち） | Admin APIのSpend Limit GETとCosts GET。enforcement=trueの組織月次上限がある場合のみ当月コストを差し引いて表示。実アカウント未検証。 |
 | 87 | LLM・生成API | Anthropic Console API | ○ 条件付き | 今回は見送り | 管理者権限とベータ用の項目が必要。費用の集計で、残高ではない |
 | 88 | LLM・生成API | Gemini API / AI Studio | ○ 条件付き | 今回は見送り | Google Cloud の課金・監視の権限が必要（要個別検証） |
 | 89 | LLM・生成API | Mistral API | ○ 条件付き | 今回は見送り | Enterprise の管理者API限定 |
@@ -49,5 +49,5 @@
 ## 件数
 
 - 資料の確認待ち: 5件
-- 今回は見送り: 25件
-- 実装済み（要実機確認）: 8件
+- 今回は見送り: 24件
+- 実装済み（要実機確認・PR中を含む）: 10件

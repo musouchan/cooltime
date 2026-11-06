@@ -161,6 +161,13 @@ enum Fetchers {
                                                                            budgetsData: budgetsData,
                                                                            consumptionData: data,
                                                                            now: now, fetchedAt: now), identity: nil)
+            case "sheet-86":
+                let limitData = try await get("https://api.openai.com/v1/organization/spend_limit", headers: bearer(key))
+                let costsURL = OpenAIPlatformUsage.costsURL(now: now)
+                data = try await get(costsURL, headers: bearer(key))
+                return FetchResult(snapshot: try OpenAIPlatformUsage.parse(limitData: limitData,
+                                                                           costsData: data,
+                                                                           now: now, fetchedAt: now), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
