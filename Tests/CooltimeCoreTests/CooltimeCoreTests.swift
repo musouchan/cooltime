@@ -862,7 +862,10 @@ final class ManualImportTests: XCTestCase {
         XCTAssertEqual(ManualCatalog.all.count, 151)
         // Spark is delivered on PR #13 and can be added independently of this stack.
         let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
-        XCTAssertEqual(Catalog.all.count + pendingSpark, 185)
+        // The automated option is separate from the existing manual service.
+        XCTAssertEqual(Catalog.all.count + pendingSpark, 186)
+        XCTAssertEqual(Catalog.service("sheet-106")?.method, .manual)
+        XCTAssertEqual(Catalog.service("browserbase-usage")?.method, .apiKey)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
         XCTAssertEqual(Catalog.service("sheet-20")?.method, .apiKey)
