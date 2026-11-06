@@ -239,9 +239,7 @@ public enum ManualCatalog {
         ServiceDef(id: "sheet-102", name: "Azure AI Foundry", kind: .credit, method: .manual,
                    defaultPaymentURL: "", bundleIDs: [],
                    hint: "手動入力・CSV（自動取得未対応）｜Azure Monitor・請求使用量", apiKeyHelp: nil),
-        ServiceDef(id: "sheet-104", name: "Exa", kind: .credit, method: .manual,
-                   defaultPaymentURL: "", bundleIDs: [],
-                   hint: "手動入力・CSV（自動取得未対応）｜API使用量・クレジット", apiKeyHelp: nil),
+
         ServiceDef(id: "sheet-106", name: "Browserbase", kind: .credit, method: .manual,
                    defaultPaymentURL: "", bundleIDs: [],
                    hint: "手動入力・CSV（自動取得未対応）｜セッション消費量・契約上限", apiKeyHelp: nil),
