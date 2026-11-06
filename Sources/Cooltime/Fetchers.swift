@@ -191,6 +191,10 @@ enum Fetchers {
             case "sheet-112":
                 data = try await get("https://context7.com/api/v2/usage?days=30", headers: bearer(key))
                 return FetchResult(snapshot: try Context7Usage.parse(data, fetchedAt: now), identity: nil)
+            case "browserbase-usage":
+                let config = try BrowserbaseUsage.configuration(from: key)
+                data = try await get(config.url, headers: ["X-BB-API-Key": config.apiKey], allowRedirects: false)
+                return FetchResult(snapshot: try BrowserbaseUsage.parse(data, fetchedAt: now), identity: nil)
             case "sheet-113":
                 let config = try MakeUsage.configuration(from: key)
                 data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
@@ -275,14 +279,21 @@ enum Fetchers {
         }
     }
 
-    private static func get(_ url: String, headers: [String: String]) async throws -> Data {
+    private final class BlockRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
+    private static func get(_ url: String, headers: [String: String], allowRedirects: Bool = true) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
         // Cookie・キャッシュは使わない。
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
         do {
-            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req, delegate: allowRedirects ? nil : BlockRedirects())
             let code = (res as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(code) else { throw FetchError.http(code) }
             return data
