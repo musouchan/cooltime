@@ -102,6 +102,9 @@ enum Fetchers {
             let (limits, acct) = try await Task.detached { try Codex.query() }.value
             return FetchResult(snapshot: try CodexRateLimits.parse(limits, fetchedAt: now),
                                identity: acct.flatMap(CodexAccount.parse))
+        case .pixVerseCLI:
+            let balance = try await Task.detached { try PixVerseCommand.balance() }.value
+            return FetchResult(snapshot: balance, identity: nil)
         case .apiKey:
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data

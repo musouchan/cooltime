@@ -12,6 +12,8 @@ public enum FetchMethod: Sendable {
     case statuslineFile
     /// `codex app-server` に問い合わせる（更新ボタンのときだけ）。
     case codexAppServer
+    /// インストール済みの公式 PixVerse CLI に問い合わせる。
+    case pixVerseCLI
     /// 公式 API をAPIキーで呼ぶ（更新ボタンのときだけ）。
     case apiKey
     /// 利用者が確認済みの数値を記録し、CSVで取り込む（自動通信なし）。
@@ -46,6 +48,10 @@ public enum Catalog {
         ServiceDef(id: "sheet-11", name: "Google Antigravity", kind: .credit, method: .statuslineFile,
                    defaultPaymentURL: "https://antigravity.google/",
                    bundleIDs: [], hint: "Antigravity CLIのstatusLine JSONからモデル別quotaをローカル取得。会話や認証情報は保存しません。",
+                   apiKeyHelp: nil),
+        ServiceDef(id: "pixverse-cli", name: "PixVerse（CLI）", kind: .credit, method: .pixVerseCLI,
+                   defaultPaymentURL: "https://app.pixverse.ai/subscribe",
+                   bundleIDs: [], hint: "公式CLIでログイン後、更新で選択中のワークスペースの残高を取得します。",
                    apiKeyHelp: nil),
         ServiceDef(id: "elevenlabs", name: "ElevenLabs", kind: .subscription, method: .apiKey,
                    defaultPaymentURL: "https://elevenlabs.io/app/subscription",
