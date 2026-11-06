@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 157)
+        XCTAssertEqual(ManualCatalog.all.count, 156)
         // Spark is delivered on PR #13 and can be added independently of this stack.
         let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
         XCTAssertEqual(Catalog.all.count + pendingSpark, 185)
@@ -871,6 +871,9 @@ final class ManualImportTests: XCTestCase {
         XCTAssertEqual(Catalog.service("sheet-86")?.method, .apiKey)
         XCTAssertEqual(Catalog.service("sheet-86")?.kind, .subscription)
         XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-86" })
+        XCTAssertEqual(Catalog.service("sheet-87")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-87")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-87" })
         XCTAssertEqual(Catalog.service("sheet-11")?.method, .statuslineFile)
         XCTAssertEqual(Catalog.service("sheet-187")?.name, "Kindroid")
         XCTAssertTrue(ManualCatalog.all.allSatisfy { $0.method == .manual && $0.apiKeyHelp == nil })
