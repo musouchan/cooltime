@@ -860,7 +860,9 @@ final class ManualImportTests: XCTestCase {
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
         XCTAssertEqual(ManualCatalog.all.count, 165)
-        XCTAssertEqual(Catalog.all.count, 184)
+        XCTAssertEqual(Catalog.all.count, 185)
+        XCTAssertEqual(Catalog.service("sheet-55")?.method, .manual)
+        XCTAssertEqual(Catalog.service("pixverse-cli")?.method, .pixVerseCLI)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
         XCTAssertEqual(Catalog.service("sheet-11")?.method, .statuslineFile)
