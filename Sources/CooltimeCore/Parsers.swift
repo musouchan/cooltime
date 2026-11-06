@@ -230,11 +230,14 @@ public enum RunwayAPI {
 }
 
 public enum Photoroom {
-    /// GET https://image-api.photoroom.com/v1/account（x-api-key）→ {"credits": {"available": 9, "subscription": 10}}
+    /// GET /v2/account → {"images": {"available": 83, "subscription": 100}, "plan": "basic"}
+    /// v1/account の credits response も読み取り、既存の利用者との互換性を保つ。
     public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
         let r = try json(data)
-        guard let credits = r["credits"] as? [String: Any], let available = number(credits["available"]) else {
-            throw ParseError.invalid("credits.available がありません")
+        let images = r["images"] as? [String: Any]
+        let credits = r["credits"] as? [String: Any]
+        guard let available = number(images?["available"]) ?? number(credits?["available"]) else {
+            throw ParseError.invalid("images.available がありません")
         }
         return Snapshot(credit: CreditBalance(amount: available, currency: "credits"), fetchedAt: fetchedAt)
     }
