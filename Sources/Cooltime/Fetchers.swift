@@ -202,6 +202,12 @@ enum Fetchers {
                 data = try await get(url, headers: ["x-api-key": config.apiKey], allowRedirects: false)
                 return FetchResult(snapshot: try LangSmithUsage.parse(data, workspace: config.workspace, period: period,
                                                                       fetchedAt: now), identity: nil)
+            case "datadog-bits-usage":
+                let config = try DatadogBitsUsage.configuration(from: key)
+                let url = try DatadogBitsUsage.url(for: config.site, now: now)
+                data = try await get(url, headers: ["DD-API-KEY": config.apiKey,
+                                                     "DD-APPLICATION-KEY": config.applicationKey], allowRedirects: false)
+                return FetchResult(snapshot: try DatadogBitsUsage.parse(data, fetchedAt: now), identity: nil)
             case "sheet-113":
                 let config = try MakeUsage.configuration(from: key)
                 data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
