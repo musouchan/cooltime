@@ -125,6 +125,11 @@ enum Fetchers {
                 data = try await get(config.url, headers: ["Authorization": config.authorization],
                                      allowRedirects: false, loopbackOnly: true)
                 return FetchResult(snapshot: try OpenCodeGoUsage.parse(data, workspace: config.workspace, fetchedAt: now), identity: nil)
+            case "huggingface-inference-usage":
+                let config = try HuggingFaceUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 2)
+                let page = try await getUsagePage(HuggingFaceUsage.url(organization: config.organization, period: period), headers: bearer(config.token))
+                return FetchResult(snapshot: try HuggingFaceUsage.parse(page.data, linkHeader: page.link, period: period, fetchedAt: now), identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
@@ -275,6 +280,23 @@ enum Fetchers {
     private static func githubHeaders(_ key: String) -> [String: String] {
         bearer(key).merging(["Accept": "application/vnd.github+json",
                              "X-GitHub-Api-Version": CopilotCredits.apiVersion]) { $1 }
+    }
+
+    private static func getUsagePage(_ url: String, headers: [String: String]) async throws -> (data: Data, link: String?) {
+        var req = URLRequest(url: URL(string: url)!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        cfg.urlCache = nil
+        let session = URLSession(configuration: cfg)
+        defer { session.finishTasksAndInvalidate() }
+        do {
+            let (data, response) = try await session.data(for: req, delegate: BlockRedirects())
+            guard let response = response as? HTTPURLResponse else { throw FetchError.network }
+            guard (200..<300).contains(response.statusCode) else { throw FetchError.http(response.statusCode) }
+            return (data, response.value(forHTTPHeaderField: "Link"))
+        } catch let error as FetchError { throw error }
+        catch { throw FetchError.network }
     }
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }
