@@ -12,20 +12,24 @@ public struct UsageWindow: Codable, Equatable, Sendable {
     /// 公式に報告された実績値（残量や上限とは別）。例: 請求期間のコスト。
     public var reportedAmount: Double?
     public var reportedUnit: String?
+    /// 公式APIが明示した利用停止。数値の残量とは別に保持する。
+    public var isLimited: Bool?
 
     public init(label: String, usedPercent: Double? = nil, remainingCount: Double? = nil,
-                resetsAt: Date? = nil, reportedAmount: Double? = nil, reportedUnit: String? = nil) {
+                resetsAt: Date? = nil, reportedAmount: Double? = nil, reportedUnit: String? = nil, isLimited: Bool? = nil) {
         self.label = label
         self.usedPercent = usedPercent
         self.remainingCount = remainingCount
         self.resetsAt = resetsAt
         self.reportedAmount = reportedAmount
         self.reportedUnit = reportedUnit
+        self.isLimited = isLimited
     }
 
     public var remainingPercent: Double? { usedPercent.map { max(0, 100 - $0) } }
 
     public var isExhausted: Bool {
+        if isLimited == true { return true }
         if let used = usedPercent, used >= 100 { return true }
         if let left = remainingCount, left <= 0 { return true }
         return false
@@ -94,3 +98,4 @@ public struct Account: Codable, Equatable, Identifiable, Sendable {
         self.planID = planID
     }
 }
+
