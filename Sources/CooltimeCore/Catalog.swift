@@ -119,6 +119,10 @@ public enum Catalog {
                    defaultPaymentURL: "https://fal.ai/dashboard/billing",
                    bundleIDs: [], hint: "公式Account Billing APIから、キーが属するアカウントの残高と通貨を取得します。",
                    apiKeyHelp: "READONLYプリセットのAPIキー（billing:usage:read）"),
+        ServiceDef(id: "figma-ai-usage", name: "Figma AI（Enterprise利用実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://www.figma.com/",
+                   bundleIDs: [], hint: "指定ユーザーの7日間の消費クレジット。集計はUTC・最大6時間遅延。残量は表示しません。",
+                   apiKeyHelp: "対象メールアドレス|Plan access token（Enterprise・org:ai_metering_usage_read）"),
         ServiceDef(id: "elevenlabs", name: "ElevenLabs", kind: .subscription, method: .apiKey,
                    defaultPaymentURL: "https://elevenlabs.io/app/subscription",
                    bundleIDs: [], hint: "月の文字数と次のリセット日時。", apiKeyHelp: "APIキー（user_read 権限）"),
@@ -174,3 +178,4 @@ public enum Catalog {
 
     public static func service(_ id: String) -> ServiceDef? { all.first { $0.id == id } }
 }
+

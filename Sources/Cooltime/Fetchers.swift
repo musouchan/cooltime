@@ -106,6 +106,13 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "figma-ai-usage":
+                let config = try FigmaAIUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 6)
+                let snapshot = try await FigmaAIUsage.fetch(email: config.email, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: ["X-Figma-Token": config.token], allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
@@ -472,3 +479,4 @@ enum ClaudeCLI {
         return r
     }
 }
+
