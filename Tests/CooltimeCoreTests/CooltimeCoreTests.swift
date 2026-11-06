@@ -847,10 +847,10 @@ final class DocumentedAPITests: XCTestCase {
 
     func testHeyGenSubscriptionKeepsSeparatePools() throws {
         let response = #"{"data":{"billing_type":"subscription","subscription":{"credits":{"premium_credits":{"remaining":0,"resets_at":"2026-12-01T00:00:00Z"},"add_on_credits":{"remaining":12}}}}}"#
-        let windows = try HeyGen.parse(d(response), fetchedAt: at).windows
-        XCTAssertEqual(windows.map(\.remainingCount), [0, 12])
-        XCTAssertNotNil(windows.first?.resetsAt)
-        XCTAssertNil(windows.last?.resetsAt)
+        let credit = try XCTUnwrap(HeyGen.parse(d(response), fetchedAt: at).credit)
+        XCTAssertEqual(credit.amount, 0)
+        XCTAssertEqual(credit.note, "プレミアム 0 / 追加 12")
+        XCTAssertNotNil(credit.resetsAt)
     }
 
     func testHeyGenUsageBasedNeedsBothAmountsAndRejectsInvalidWallet() throws {
