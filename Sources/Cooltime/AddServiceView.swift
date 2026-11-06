@@ -6,6 +6,7 @@ struct AddServiceView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var picked: Set<String> = []
+    @State private var search = ""
     let onAdded: (UUID) -> Void
 
     var body: some View {
@@ -13,7 +14,9 @@ struct AddServiceView: View {
             Text("サービスの追加").font(.title3).fontWeight(.semibold)
             Text("使っているものだけ選んでください。追加するまで、通信はしません。")
                 .font(.callout).foregroundStyle(.secondary)
-            List(Catalog.all) { s in
+            TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
+                .textFieldStyle(.roundedBorder)
+            List(Catalog.all.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { s in
                 Toggle(isOn: Binding(get: { picked.contains(s.id) },
                                      set: { if $0 { picked.insert(s.id) } else { picked.remove(s.id) } })) {
                     HStack {

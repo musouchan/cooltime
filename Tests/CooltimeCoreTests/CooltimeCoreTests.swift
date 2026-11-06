@@ -798,11 +798,11 @@ final class MoreAPIParserTests: XCTestCase {
     }
 
     func testNewServicesAreInTheCatalogInSheetOrder() {
-        let ids = Catalog.all.map(\.id)
+        let ids = Catalog.automatic.map(\.id)
         XCTAssertEqual(Array(ids.suffix(11)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy",
                                                "copilot", "synthesia", "tripo"])
         XCTAssertEqual(Set(ids).count, ids.count)  // IDは重ならない
-        XCTAssertTrue(Catalog.all.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+        XCTAssertTrue(Catalog.automatic.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
     }
 }
 
@@ -851,5 +851,71 @@ final class DocumentedAPITests: XCTestCase {
         XCTAssertEqual(c?.note, "処理中で確保されている分 200")
         XCTAssertNil(try Tripo.parse(d(#"{"data":{"balance": 5, "frozen": 0}}"#), fetchedAt: at).credit?.note)
         XCTAssertThrowsError(try Tripo.parse(d("{}"), fetchedAt: at))
+    }
+}
+
+final class ManualImportTests: XCTestCase {
+    let observed = Date(timeIntervalSince1970: 1_793_880_000)
+    var later: Date { observed.addingTimeInterval(60) }
+
+    func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
+        XCTAssertEqual(ManualCatalog.all.count, 166)
+        XCTAssertEqual(Catalog.all.count, 184)
+        XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
+        XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
+        XCTAssertEqual(Catalog.service("sheet-187")?.name, "Kindroid")
+        XCTAssertTrue(ManualCatalog.all.allSatisfy { $0.method == .manual && $0.apiKeyHelp == nil })
+    }
+
+    func testManualObservationNeverInventsResetAndIsTimestamped() throws {
+        let record = try ManualObservation(remaining: 0, unit: "credits", observedAt: observed,
+                                           source: "公式のUsage画面", now: later)
+        XCTAssertNil(record.resetsAt)
+        XCTAssertEqual(record.snapshot.credit?.amount, 0)
+        XCTAssertNil(record.snapshot.credit?.resetsAt)
+        XCTAssertEqual(record.snapshot.fetchedAt, observed)
+        XCTAssertTrue(record.snapshot.credit?.note?.contains("手動記録") == true)
+    }
+
+    func testManualValidationRejectsInvalidAndFutureData() {
+        XCTAssertThrowsError(try ManualObservation(remaining: -1, unit: "credits", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: .infinity, unit: "credits", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD", observedAt: observed,
+                                                    source: "", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD",
+                                                    observedAt: later.addingTimeInterval(601),
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD", observedAt: observed,
+                                                    resetsAt: observed.addingTimeInterval(-1),
+                                                    source: "公式", now: later))
+    }
+
+    func testCSVImportParsesEscapedSourceAndMultipleRows() throws {
+        let csv = #"""
+        remaining,unit,observed_at,reset_at,source
+        12,credits,2026-11-05T12:00:00Z,,"公式, Billing"
+        0,requests,2026-11-05T12:01:00Z,2026-11-06T00:00:00Z,"Usage ""Quota"""
+        """#
+        let records = try ManualImport.parseCSV(csv, now: later.addingTimeInterval(300))
+        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(records[0].source, "公式, Billing")
+        XCTAssertNil(records[0].resetsAt)
+        XCTAssertEqual(records[1].remaining, 0)
+        XCTAssertEqual(records[1].source, "Usage \"Quota\"")
+        XCTAssertNotNil(records[1].resetsAt)
+    }
+
+    func testCSVRejectsMissingFieldsAndMalformedRows() {
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,source\n1,USD,usage", now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n-5,USD,2026-11-05T12:00:00Z,official",
+                                                      now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,not-a-date,official",
+                                                      now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,2026-11-05T12:00:00Z,\"bad",
+                                                      now: later))
     }
 }

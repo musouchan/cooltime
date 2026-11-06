@@ -14,6 +14,8 @@ public enum FetchMethod: Sendable {
     case codexAppServer
     /// 公式 API をAPIキーで呼ぶ（更新ボタンのときだけ）。
     case apiKey
+    /// 利用者が確認済みの数値を記録し、CSVで取り込む（自動通信なし）。
+    case manual
 }
 
 public struct ServiceDef: Identifiable, Sendable {
@@ -29,7 +31,8 @@ public struct ServiceDef: Identifiable, Sendable {
 }
 
 public enum Catalog {
-    public static let all: [ServiceDef] = [
+    public static let all: [ServiceDef] = automatic + ManualCatalog.all
+    public static let automatic: [ServiceDef] = [
         ServiceDef(id: "claude", name: "Claude / Claude Code", kind: .subscription, method: .statuslineFile,
                    defaultPaymentURL: "https://claude.ai/settings/billing",
                    bundleIDs: ["com.anthropic.claudefordesktop"],

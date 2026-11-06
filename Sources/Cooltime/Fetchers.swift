@@ -67,6 +67,8 @@ enum Fetchers {
     static func fetch(account: Account, service: ServiceDef) async throws -> FetchResult {
         let now = Date()
         switch service.method {
+        case .manual:
+            throw ParseError.unsupported("手動記録サービスは自動取得しません")
         case .statuslineFile:
             // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
             // 取れなければ、ステータスラインの記録に戻る。
