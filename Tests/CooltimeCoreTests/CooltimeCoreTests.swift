@@ -859,8 +859,10 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 154)
-        XCTAssertEqual(Catalog.all.count, 185)
+        XCTAssertEqual(ManualCatalog.all.count, 153)
+        // Spark is delivered on PR #13 and can be added independently of this stack.
+        let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
+        XCTAssertEqual(Catalog.all.count + pendingSpark, 185)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
         XCTAssertEqual(Catalog.service("sheet-20")?.method, .apiKey)
