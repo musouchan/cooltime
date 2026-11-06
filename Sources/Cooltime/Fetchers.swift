@@ -168,6 +168,12 @@ enum Fetchers {
                 return FetchResult(snapshot: try OpenAIPlatformUsage.parse(limitData: limitData,
                                                                            costsData: data,
                                                                            now: now, fetchedAt: now), identity: nil)
+            case "sheet-87":
+                let anthropicHeaders = ["x-api-key": key,
+                                        "anthropic-version": AnthropicUsage.apiVersion,
+                                        "anthropic-beta": AnthropicUsage.betaHeader]
+                data = try await get(AnthropicUsage.costsURL(now: now), headers: anthropicHeaders)
+                return FetchResult(snapshot: try AnthropicUsage.parse(data), identity: nil)
             case "sheet-81":
                 data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
                 return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)

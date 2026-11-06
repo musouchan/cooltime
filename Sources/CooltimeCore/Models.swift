@@ -9,12 +9,18 @@ public struct UsageWindow: Codable, Equatable, Sendable {
     public var remainingCount: Double?
     /// 公式の応答にある戻り時刻。無ければ nil（推定はしない）。
     public var resetsAt: Date?
+    /// 公式に報告された実績値（残量や上限とは別）。例: 請求期間のコスト。
+    public var reportedAmount: Double?
+    public var reportedUnit: String?
 
-    public init(label: String, usedPercent: Double? = nil, remainingCount: Double? = nil, resetsAt: Date? = nil) {
+    public init(label: String, usedPercent: Double? = nil, remainingCount: Double? = nil,
+                resetsAt: Date? = nil, reportedAmount: Double? = nil, reportedUnit: String? = nil) {
         self.label = label
         self.usedPercent = usedPercent
         self.remainingCount = remainingCount
         self.resetsAt = resetsAt
+        self.reportedAmount = reportedAmount
+        self.reportedUnit = reportedUnit
     }
 
     public var remainingPercent: Double? { usedPercent.map { max(0, 100 - $0) } }

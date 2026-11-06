@@ -859,7 +859,7 @@ final class ManualImportTests: XCTestCase {
     var later: Date { observed.addingTimeInterval(60) }
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
-        XCTAssertEqual(ManualCatalog.all.count, 157)
+        XCTAssertEqual(ManualCatalog.all.count, 156)
         XCTAssertEqual(Catalog.all.count, 185)
         XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
@@ -869,6 +869,9 @@ final class ManualImportTests: XCTestCase {
         XCTAssertEqual(Catalog.service("sheet-86")?.method, .apiKey)
         XCTAssertEqual(Catalog.service("sheet-86")?.kind, .subscription)
         XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-86" })
+        XCTAssertEqual(Catalog.service("sheet-87")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-87")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-87" })
         XCTAssertEqual(Catalog.service("sheet-11")?.method, .statuslineFile)
         XCTAssertEqual(Catalog.service("sheet-187")?.name, "Kindroid")
         XCTAssertTrue(ManualCatalog.all.allSatisfy { $0.method == .manual && $0.apiKeyHelp == nil })
