@@ -24,18 +24,19 @@ public enum HeyGen {
                   let pools = subscription["credits"] as? [String: Any] else {
                 throw ParseError.invalid("HeyGenのクレジット枠がありません")
             }
-            var windows: [UsageWindow] = []
-            if let premium = pools["premium_credits"] as? [String: Any],
-               let remaining = amount(premium["remaining"]), remaining.rounded() == remaining {
-                windows.append(UsageWindow(label: "プレミアムクレジット", remainingCount: remaining,
-                                           resetsAt: parseDate(premium["resets_at"] as? String)))
+            let premium = pools["premium_credits"] as? [String: Any]
+            let addOn = pools["add_on_credits"] as? [String: Any]
+            let premiumCount = amount(premium?["remaining"]).flatMap(Int.init(exactly:))
+            let addOnCount = amount(addOn?["remaining"]).flatMap(Int.init(exactly:))
+            guard let primaryCount = premiumCount ?? addOnCount else {
+                throw ParseError.invalid("HeyGenのクレジット残数がありません")
             }
-            if let addOn = pools["add_on_credits"] as? [String: Any],
-               let remaining = amount(addOn["remaining"]), remaining.rounded() == remaining {
-                windows.append(UsageWindow(label: "追加クレジット", remainingCount: remaining))
-            }
-            guard !windows.isEmpty else { throw ParseError.invalid("HeyGenのクレジット残数がありません") }
-            return Snapshot(windows: windows, fetchedAt: fetchedAt)
+            var labels: [String] = []
+            if let premiumCount { labels.append("プレミアム \(premiumCount)") }
+            if let addOnCount { labels.append("追加 \(addOnCount)") }
+            let reset = premiumCount == nil ? nil : parseDate(premium?["resets_at"] as? String)
+            return Snapshot(credit: CreditBalance(amount: Double(primaryCount), currency: "credits", resetsAt: reset,
+                                                  note: labels.joined(separator: " / ")), fetchedAt: fetchedAt)
         case "usage_based":
             guard let usage = account["usage_based"] as? [String: Any],
                   let current = amount(usage["spending_current_usd"]),
