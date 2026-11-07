@@ -41,7 +41,8 @@ public enum Microsoft365CopilotReport {
     private static func csv(_ text: String) -> [[String]]? {
         var rows: [[String]] = [], row: [String] = [], field = ""
         var quoted = false, closed = false
-        let chars = Array(text)
+        // Swift Character treats CRLF as one grapheme; normalize before field scanning.
+        let chars = Array(text.replacingOccurrences(of: "\r\n", with: "\n"))
         var i = 0
         while i < chars.count {
             let c = chars[i]
@@ -56,8 +57,6 @@ public enum Microsoft365CopilotReport {
             } else if c == "," || c == "\n" {
                 row.append(field); field = ""; closed = false
                 if c == "\n" { rows.append(row); row = [] }
-            } else if c == "\r" && i + 1 < chars.count && chars[i + 1] == "\n" {
-                // CRLF is handled by the following LF.
             } else {
                 guard !closed else { return nil }
                 field.append(c)
