@@ -266,6 +266,12 @@ enum Fetchers {
                     try AzureMonitorCLI.fetch(config: config, period: period, fetchedAt: now)
                 }.value
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "salesforce-wallet-usage":
+                let config = try SalesforceDigitalWalletUsage.configuration(from: key)
+                let snapshot = try await Task.detached {
+                    try SalesforceCLI.fetch(config: config, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
