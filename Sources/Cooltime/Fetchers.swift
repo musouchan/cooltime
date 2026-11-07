@@ -243,6 +243,11 @@ enum Fetchers {
                     try await get(url, headers: bearer(token), allowRedirects: false)
                 }
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "scenario-cu-usage":
+                let config = try ScenarioUsage.configuration(from: key)
+                data = try await get(ScenarioUsage.url(teamID: config.teamID),
+                                     headers: ["Authorization": config.authorization], allowRedirects: false)
+                return FetchResult(snapshot: try ScenarioUsage.parse(data, fetchedAt: now), identity: nil)
             case "you-api-balance":
                 data = try await get("https://api.you.com/v1/billing/account_balance",
                                      headers: ["X-API-Key": key], allowRedirects: false)
