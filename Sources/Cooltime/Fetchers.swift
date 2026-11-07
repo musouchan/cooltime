@@ -294,6 +294,10 @@ enum Fetchers {
                                           headers: ["x-api-key": key, "Content-Type": "application/json"],
                                           body: ComposioProjectUsage.requestBody(now: now), allowRedirects: false)
                 return FetchResult(snapshot: try ComposioProjectUsage.parse(data, fetchedAt: now), identity: nil)
+            case "mistral-admin-spend-status":
+                data = try await get("https://api.mistral.ai/v1/admin/spend-limit",
+                                     headers: ["x-api-key": key], allowRedirects: false)
+                return FetchResult(snapshot: try MistralAdminSpendStatus.parse(data, fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
