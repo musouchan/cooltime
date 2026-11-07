@@ -328,6 +328,12 @@ enum Fetchers {
                 guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
                 return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
                                                                                 period: period, fetchedAt: now), identity: nil)
+            case "cloudflare-gateway-usage":
+                let config = try CloudflareGatewayUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 24)
+                data = try await get(CloudflareGatewayUsage.url(config: config, period: period),
+                                     headers: bearer(config.token), allowRedirects: false)
+                return FetchResult(snapshot: try CloudflareGatewayUsage.parse(data, period: period, fetchedAt: now), identity: nil)
             case "krea-workspace-balance":
                 let profile = try KreaBalance.profile(from: key)
                 data = try await Task.detached { try KreaCLI.balance(profile: profile) }.value
