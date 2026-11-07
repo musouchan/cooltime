@@ -243,6 +243,12 @@ enum Fetchers {
                     try await get(url, headers: bearer(token), allowRedirects: false)
                 }
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "kiro-enterprise-usage":
+                let config = try KiroEnterpriseUsage.configuration(from: key)
+                let snapshot = try await Task.detached {
+                    try KiroAWSCLI.fetch(config: config, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "scenario-cu-usage":
                 let config = try ScenarioUsage.configuration(from: key)
                 data = try await get(ScenarioUsage.url(teamID: config.teamID),
