@@ -1,5 +1,4 @@
 import Foundation
-import FoundationXML
 
 /// JetBrains IDE's local AI Assistant quota cache. No account credential or network request is used.
 public enum JetBrainsAIQuota {
