@@ -298,6 +298,15 @@ enum Fetchers {
                 data = try await get("https://api.mistral.ai/v1/admin/spend-limit",
                                      headers: ["x-api-key": key], allowRedirects: false)
                 return FetchResult(snapshot: try MistralAdminSpendStatus.parse(data, fetchedAt: now), identity: nil)
+            case "microsoft365-copilot-report":
+                let config = try Microsoft365CopilotReport.configuration(from: key)
+                let token = try await Task.detached {
+                    try MicrosoftGraphCLI.accessToken(tenantID: config.tenantID)
+                }.value
+                data = try await get(Microsoft365CopilotReport.url,
+                                     headers: bearer(token), allowRedirects: false)
+                return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
+                                                                                fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
