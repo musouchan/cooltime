@@ -897,3 +897,38 @@ final class RecoveryTests: XCTestCase {
         XCTAssertTrue(recoveryMessage(serviceName: "Meshy", recovery: .creditIncreased(from: 1, to: 250, currency: "credits")).contains("250"))
     }
 }
+
+final class StatusPageTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let utc = TimeZone(identifier: "UTC")!
+
+    func testPageShowsStateRemainingAndTime() {
+        let w = UsageWindow(label: "5時間枠", usedPercent: 40, resetsAt: now.addingTimeInterval(3600))
+        let ok = StatusEntry(title: "Claude / Claude Code", state: .available, windows: [w], credit: nil, fetchedAt: now, failed: false)
+        let lim = StatusEntry(title: "ChatGPT / Codex", state: .limited(until: now.addingTimeInterval(59 * 60)),
+                              windows: [UsageWindow(label: "5時間枠", usedPercent: 100, resetsAt: now.addingTimeInterval(59 * 60))],
+                              credit: nil, fetchedAt: now, failed: false)
+        let html = renderStatusPage([ok, lim], generatedAt: now, timeZone: utc)
+        XCTAssertTrue(html.contains("残り 60%"))
+        XCTAssertTrue(html.contains("あと59分"))
+        XCTAssertTrue(html.contains("尽きた"))
+        XCTAssertTrue(html.contains("時点"))
+        // 制限中が、使用可能より先
+        XCTAssertLessThan(html.range(of: "制限中</h2>")!.lowerBound, html.range(of: "使用可能</h2>")!.lowerBound)
+        XCTAssertTrue(html.contains("viewport"))
+    }
+
+    func testEscapesAndFlagsFailures() {
+        let e = StatusEntry(title: "<b>x</b> & y", state: .available, windows: [], credit: CreditBalance(amount: 8.4, currency: "credits"),
+                            fetchedAt: now, failed: true)
+        let html = renderStatusPage([e], generatedAt: now, timeZone: utc)
+        XCTAssertFalse(html.contains("<b>x</b>"))
+        XCTAssertTrue(html.contains("&lt;b&gt;x&lt;/b&gt; &amp; y"))
+        XCTAssertTrue(html.contains("取得に失敗しています"))
+        XCTAssertTrue(html.contains("8.4"))
+    }
+
+    func testEmpty() {
+        XCTAssertTrue(renderStatusPage([], generatedAt: now, timeZone: utc).contains("まだ登録されていません"))
+    }
+}

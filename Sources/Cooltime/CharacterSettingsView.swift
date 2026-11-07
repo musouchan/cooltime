@@ -15,6 +15,8 @@ struct CharacterSettingsView: View {
     @AppStorage(IMessageNotifier.enabledKey) private var notifyEnabled = true
     @AppStorage(IMessageNotifier.handleKey) private var notifyHandle = ""
     @State private var notifyResult: String?
+    @AppStorage(StatusPageWriter.enabledKey) private var pageEnabled = false
+    @EnvironmentObject private var model: AppModel
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -80,6 +82,15 @@ struct CharacterSettingsView: View {
                         if let notifyResult { Text(notifyResult).font(.caption).foregroundStyle(.secondary) }
                     }
                     Text("Mac の「メッセージ」に、iMessage でサインインしている必要があります。初めて送るときに、Cooltime が「メッセージ」を操作してよいか聞かれるので、許可してください。Mac がスリープ中は確認できないので、起きたときに、まとめて知らせます。送る文面は「○○が使えるようになりました」だけで、APIキーや数字は送りません。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("スマホで見る").font(.title3).fontWeight(.semibold)
+                    Toggle("残りと戻る時刻の一覧を、iCloud Drive に書き出す", isOn: $pageEnabled)
+                        .onChange(of: pageEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
+                    if pageEnabled, let e = model.pageError { Label(e, systemImage: "exclamationmark.triangle").font(.callout) }
+                    Text("iPhone の「ファイル」アプリ → iCloud Drive → 「Cooltime」→ index.html で開けます（共有ボタンから「ホーム画面に追加」もできます）。Mac が起きている間だけ、1分おきに更新されます。ページには、残り・戻る時刻・サービス名だけを書き、APIキーは書きません。外のサービスは使いません。初めて書くとき、フォルダへのアクセスの許可を聞かれることがあります。")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
