@@ -250,7 +250,25 @@ final class AppModel: ObservableObject {
             errors[account.id] = error.localizedDescription
         }
         now = clock.now
+        publishStatusPage()
     }
+
+    /// スマホ用のページを書き出す（設定がオンのときだけ。1分より短い間隔では書かない）。
+    private var lastPagePublish = Date.distantPast
+    func publishStatusPage(force: Bool = false) {
+        guard StatusPageWriter.isEnabled || StatusPageWriter.widgetEnabled else { return }
+        guard force || clock.now.timeIntervalSince(lastPagePublish) >= 60 else { return }
+        lastPagePublish = clock.now
+        let entries = items.map {
+            StatusEntry(title: $0.title, state: $0.state, windows: $0.snapshot?.windows ?? [], credit: $0.snapshot?.credit,
+                        fetchedAt: $0.snapshot?.fetchedAt, failed: $0.fetchError != nil)
+        }
+        var errors: [String] = []
+        if StatusPageWriter.isEnabled, let e = StatusPageWriter.write(entries, now: clock.now) { errors.append(e) }
+        if StatusPageWriter.widgetEnabled, let e = StatusPageWriter.writeWidget(entries, now: clock.now) { errors.append(e) }
+        pageError = errors.isEmpty ? nil : errors.joined(separator: "\n")
+    }
+    @Published var pageError: String?
 
     // MARK: 戻ったときの通知（自分宛ての iMessage）
 

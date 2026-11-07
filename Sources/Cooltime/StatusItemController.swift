@@ -37,6 +37,9 @@ final class StatusItemController: NSObject {
 
         // 場所を、macOS に覚えさせる（Command を押しながらドラッグして、好きな位置に動かせる）
         item.autosaveName = "app.cooltime.statusitem"
+        // 位置を覚えさせると、Command + ドラッグで外したとき（または macOS が隠したとき）の「非表示」も、
+        // 次の起動以降に残ってしまい、アイコンが出なくなる。起動のたびに、表示に戻す。
+        item.isVisible = true
         if let button = item.button {
             button.target = self
             button.action = #selector(toggle)
@@ -75,6 +78,9 @@ final class StatusItemController: NSObject {
             popover.contentViewController?.view.window?.makeKey()
         }
     }
+
+    /// アイコンが隠れていたら、表示に戻す（アプリをもう一度開いたときに呼ぶ）。
+    func ensureVisible() { item.isVisible = true }
 
     func closePopover() { popover.performClose(nil) }
 

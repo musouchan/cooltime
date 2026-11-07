@@ -46,7 +46,7 @@ struct ManageView: View {
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
             if model.selected == AppModel.characterPane {
-                CharacterSettingsView()
+                CharacterSettingsView().environmentObject(model)
             } else if let id = model.selected, let item = model.items.first(where: { $0.id == id }) {
                 DetailView(item: item).id(id)
             } else {
