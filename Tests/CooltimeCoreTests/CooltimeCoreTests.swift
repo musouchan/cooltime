@@ -932,3 +932,28 @@ final class StatusPageTests: XCTestCase {
         XCTAssertTrue(renderStatusPage([], generatedAt: now, timeZone: utc).contains("まだ登録されていません"))
     }
 }
+
+final class StatusJSONTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testJSONHasStateTimesAndNoSecrets() throws {
+        let lim = StatusEntry(title: "ChatGPT / Codex", state: .limited(until: now.addingTimeInterval(3540)),
+                              windows: [UsageWindow(label: "5時間枠", usedPercent: 100, resetsAt: now.addingTimeInterval(3540))],
+                              credit: nil, fetchedAt: now, failed: false)
+        let ok = StatusEntry(title: "Claude", state: .available,
+                             windows: [UsageWindow(label: "週の枠", usedPercent: 86, remainingCount: nil, resetsAt: nil)],
+                             credit: CreditBalance(amount: 8.4, currency: "credits"), fetchedAt: now, failed: true)
+        let data = renderStatusJSON([lim, ok], generatedAt: now)
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(root["generatedAt"] as? Int, 1_800_000_000)
+        let entries = try XCTUnwrap(root["entries"] as? [[String: Any]])
+        XCTAssertEqual(entries[0]["state"] as? String, "limited")
+        XCTAssertEqual(entries[0]["until"] as? Int, 1_800_003_540)
+        XCTAssertEqual(entries[1]["state"] as? String, "available")
+        XCTAssertEqual(entries[1]["credit"] as? String, "8.4")
+        XCTAssertEqual(entries[1]["failed"] as? Bool, true)
+        let w = try XCTUnwrap((entries[1]["windows"] as? [[String: Any]])?.first)
+        XCTAssertEqual(w["remainingPercent"] as? Int, 14)
+        XCTAssertNil(w["resetsAt"])  // 無ければ作らない
+    }
+}

@@ -103,3 +103,29 @@ public func renderStatusPage(_ entries: [StatusEntry], generatedAt: Date, timeZo
     html += "</body></html>\n"
     return html
 }
+
+/// ウィジェット（Scriptable）が読む、残りと戻る時刻の JSON。秘密（APIキーなど）は入れない。
+/// 時刻は UNIX 秒。ウィジェット側が、端末のタイムゾーンで「18:30」の形にする。
+public func renderStatusJSON(_ entries: [StatusEntry], generatedAt: Date) -> Data {
+    func window(_ w: UsageWindow) -> [String: Any] {
+        var d: [String: Any] = ["label": w.label, "exhausted": w.isExhausted]
+        if let p = w.remainingPercent { d["remainingPercent"] = Int(p.rounded()) }
+        if let c = w.remainingCount { d["remainingCount"] = Int(c.rounded()) }
+        if let r = w.resetsAt { d["resetsAt"] = Int(r.timeIntervalSince1970) }
+        return d
+    }
+    let list: [[String: Any]] = entries.map { e in
+        var d: [String: Any] = ["title": e.title, "failed": e.failed, "windows": e.windows.map(window)]
+        switch e.state {
+        case .limited(let until): d["state"] = "limited"; d["until"] = Int(until.timeIntervalSince1970)
+        case .available: d["state"] = "available"
+        case .stale: d["state"] = "unknown"
+        case .unset: d["state"] = "unknown"
+        }
+        if let c = e.credit { d["credit"] = formatMoney(c) }
+        if let f = e.fetchedAt { d["fetchedAt"] = Int(f.timeIntervalSince1970) }
+        return d
+    }
+    let root: [String: Any] = ["version": 1, "generatedAt": Int(generatedAt.timeIntervalSince1970), "entries": list]
+    return (try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys, .prettyPrinted])) ?? Data("{}".utf8)
+}
