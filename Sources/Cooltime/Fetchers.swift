@@ -256,6 +256,13 @@ enum Fetchers {
                     try BedrockAWSCLI.fetch(config: config, period: period, fetchedAt: now)
                 }.value
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "azure-foundry-monitor-usage":
+                let config = try AzureFoundryMonitorUsage.configuration(from: key)
+                let period = AzureFoundryMonitorUsage.previousSevenDays(now: now)
+                let snapshot = try await Task.detached {
+                    try AzureMonitorCLI.fetch(config: config, period: period, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
