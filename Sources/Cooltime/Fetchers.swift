@@ -328,6 +328,10 @@ enum Fetchers {
                 guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
                 return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
                                                                                 period: period, fetchedAt: now), identity: nil)
+            case "krea-workspace-balance":
+                let profile = try KreaBalance.profile(from: key)
+                data = try await Task.detached { try KreaCLI.balance(profile: profile) }.value
+                return FetchResult(snapshot: try KreaBalance.parse(data, fetchedAt: now), identity: nil)
             case "workspace-gemini-audit":
                 let config = try WorkspaceGeminiUsage.configuration(from: key)
                 let period = WorkspaceGeminiUsage.period(now: now)
