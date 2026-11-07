@@ -45,12 +45,15 @@ enum CharacterPrefs {
     static let lowPowerKey = "characterMotionInLowPower"
     /// メニューバーが混んでいて隠れるときのための、せまい表示（アイコンなし・短い文字）。
     static let compactKey = "menuBarCompact"
+    static let backgroundKey = "menuBarBackground"
 
     static var characterID: String {
         let v = UserDefaults.standard.string(forKey: characterKey) ?? "bunny"
         return CharacterData.ids.contains(v) ? v : "bunny"
     }
     static var menuBarCompact: Bool { UserDefaults.standard.bool(forKey: compactKey) }
+    /// メニューバーの表示に、うすい丸い背景を付ける（既定はオン）。
+    static var menuBarBackground: Bool { (UserDefaults.standard.object(forKey: backgroundKey) as? Bool) ?? true }
     static var motionInLowPower: Bool { UserDefaults.standard.bool(forKey: lowPowerKey) }
     static var motion: MotionSetting {
         MotionSetting(rawValue: UserDefaults.standard.string(forKey: motionKey) ?? "") ?? .full

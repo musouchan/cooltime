@@ -505,11 +505,21 @@ final class MenuBarDisplayTests: XCTestCase {
     }
 
     func testLimitedShowsEarliestOnly() {
-        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude"), avail(10)])
+        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude")])
         XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60), source: "claude"))
         XCTAssertEqual(d.text(now: now), "あと43分")
         XCTAssertEqual(d.characterState, .limit)
         XCTAssertEqual(d.source, "claude")
+    }
+
+    /// 一方が制限中でも、もう一方が使えるときは、使える方の残りを出す。
+    func testPartlyLimitedShowsRemainingOfTheOneThatWorks() {
+        let d = makeMenuBarDisplay([limited(111, "codex"), avail(49, "claude")])
+        XCTAssertEqual(d, .remaining(percent: 51, source: "claude", scope: nil))
+        XCTAssertEqual(d.characterState, .ok)
+        // 使える方が取得に失敗しているときは、古い数字を出さず、制限中の時間にする
+        let failed = MenuBarCandidate(state: .available, snapshot: avail(49, "claude").snapshot, fetchFailed: true, source: "claude")
+        XCTAssertEqual(makeMenuBarDisplay([limited(111, "codex"), failed]), .limited(until: now.addingTimeInterval(111 * 60), source: "codex"))
     }
 
     func testNoLimitShowsLowestRemainingWithItsSource() {
@@ -851,5 +861,39 @@ final class DocumentedAPITests: XCTestCase {
         XCTAssertEqual(c?.note, "処理中で確保されている分 200")
         XCTAssertNil(try Tripo.parse(d(#"{"data":{"balance": 5, "frozen": 0}}"#), fetchedAt: at).credit?.note)
         XCTAssertThrowsError(try Tripo.parse(d("{}"), fetchedAt: at))
+    }
+}
+
+final class RecoveryTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func snap(_ used: Double, resets: Date?, at: Date) -> Snapshot {
+        Snapshot(windows: [UsageWindow(label: "5時間", usedPercent: used, resetsAt: resets)], fetchedAt: at)
+    }
+
+    func testLimitEndedOnlyWhenAvailableAfterRefetch() {
+        let back = snap(10, resets: now.addingTimeInterval(3600), at: now)
+        XCTAssertEqual(detectRecovery(wasLimited: true, previous: nil, current: back, now: now), .limitEnded)
+        // 前から制限中でなければ、通知しない
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: nil, current: back, now: now))
+        // まだ制限中なら、通知しない
+        let still = snap(100, resets: now.addingTimeInterval(600), at: now)
+        XCTAssertNil(detectRecovery(wasLimited: true, previous: nil, current: still, now: now))
+        // 戻り時刻を過ぎただけで取り直していない（stale）なら、戻ったとは決めない
+        let old = snap(100, resets: now.addingTimeInterval(-60), at: now.addingTimeInterval(-7200))
+        XCTAssertNil(detectRecovery(wasLimited: true, previous: nil, current: old, now: now))
+    }
+
+    func testCreditIncrease() {
+        func credit(_ a: Double, _ cur: String = "USD") -> Snapshot { Snapshot(credit: CreditBalance(amount: a, currency: cur), fetchedAt: now) }
+        XCTAssertEqual(detectRecovery(wasLimited: false, previous: credit(1), current: credit(21), now: now),
+                       .creditIncreased(from: 1, to: 21, currency: "USD"))
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: credit(5), current: credit(4), now: now))  // 減った
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: nil, current: credit(5), now: now))        // 初回
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: credit(1, "CNY"), current: credit(9), now: now))  // 通貨が違う
+    }
+
+    func testMessageHasNoSecrets() {
+        XCTAssertEqual(recoveryMessage(serviceName: "Claude", recovery: .limitEnded), "Claude が使えるようになりました")
+        XCTAssertTrue(recoveryMessage(serviceName: "Meshy", recovery: .creditIncreased(from: 1, to: 250, currency: "credits")).contains("250"))
     }
 }

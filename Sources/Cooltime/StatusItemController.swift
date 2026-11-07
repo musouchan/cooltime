@@ -80,6 +80,23 @@ final class StatusItemController: NSObject {
 
     // MARK: 表示
 
+    /// うすい丸い背景。ライト・ダークで、文字の色（labelColor）を薄くしたものを使う。
+    private func applyBackground(to button: NSStatusBarButton) {
+        button.wantsLayer = true
+        guard let layer = button.layer else { return }
+        if CharacterPrefs.menuBarBackground {
+            var cg = NSColor.labelColor.withAlphaComponent(0.14).cgColor
+            button.effectiveAppearance.performAsCurrentDrawingAppearance {
+                cg = NSColor.labelColor.withAlphaComponent(0.14).cgColor
+            }
+            layer.backgroundColor = cg
+            layer.cornerRadius = 6
+            layer.cornerCurve = .continuous
+        } else {
+            layer.backgroundColor = nil
+        }
+    }
+
     private func refresh() {
         guard let button = item.button else { return }
         display = model.menuBarDisplay
@@ -112,6 +129,7 @@ final class StatusItemController: NSObject {
                 button.imagePosition = .imageOnly
             }
         }
+        applyBackground(to: button)
         button.toolTip = model.menuBarTooltip
         button.setAccessibilityLabel("Cooltime: " + (service.map { "\($0.name) " } ?? "") + (text ?? "取得できていません"))
         updateImage(force: true)
