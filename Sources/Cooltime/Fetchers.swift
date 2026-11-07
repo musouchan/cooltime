@@ -328,6 +328,16 @@ enum Fetchers {
                 guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
                 return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
                                                                                 period: period, fetchedAt: now), identity: nil)
+            case "workspace-gemini-audit":
+                let config = try WorkspaceGeminiUsage.configuration(from: key)
+                let period = WorkspaceGeminiUsage.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.workspaceAuditAccessToken() }.value
+                let snapshot = try await WorkspaceGeminiUsage.fetch(config: config, period: period, fetchedAt: now) { url in
+                    var headers = bearer(token)
+                    headers["X-Goog-User-Project"] = config.projectID
+                    return try await get(url, headers: headers, allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "magnific-team-credits":
                 let period = MagnificTeamCredits.period(now: now)
                 data = try await postJSON(MagnificTeamCredits.url,
