@@ -249,6 +249,13 @@ enum Fetchers {
                                      headers: ["X-API-Key": key], allowRedirects: false)
                 return FetchResult(snapshot: try JasperAPIUsage.parse(data, period: period,
                                                                        fetchedAt: now), identity: nil)
+            case "aws-bedrock-usage":
+                let config = try BedrockCloudWatchUsage.configuration(from: key)
+                let period = BedrockCloudWatchUsage.previousSevenDays(now: now)
+                let snapshot = try await Task.detached {
+                    try BedrockAWSCLI.fetch(config: config, period: period, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
