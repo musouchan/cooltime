@@ -243,6 +243,12 @@ enum Fetchers {
                     try await get(url, headers: bearer(token), allowRedirects: false)
                 }
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "jasper-api-usage":
+                let period = JasperAPIUsage.previousSevenDays(now: now)
+                data = try await get(JasperAPIUsage.url(period: period),
+                                     headers: ["X-API-Key": key], allowRedirects: false)
+                return FetchResult(snapshot: try JasperAPIUsage.parse(data, period: period,
+                                                                       fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
