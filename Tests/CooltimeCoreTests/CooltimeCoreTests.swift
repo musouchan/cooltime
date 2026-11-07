@@ -505,11 +505,21 @@ final class MenuBarDisplayTests: XCTestCase {
     }
 
     func testLimitedShowsEarliestOnly() {
-        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude"), avail(10)])
+        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude")])
         XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60), source: "claude"))
         XCTAssertEqual(d.text(now: now), "あと43分")
         XCTAssertEqual(d.characterState, .limit)
         XCTAssertEqual(d.source, "claude")
+    }
+
+    /// 一方が制限中でも、もう一方が使えるときは、使える方の残りを出す。
+    func testPartlyLimitedShowsRemainingOfTheOneThatWorks() {
+        let d = makeMenuBarDisplay([limited(111, "codex"), avail(49, "claude")])
+        XCTAssertEqual(d, .remaining(percent: 51, source: "claude", scope: nil))
+        XCTAssertEqual(d.characterState, .ok)
+        // 使える方が取得に失敗しているときは、古い数字を出さず、制限中の時間にする
+        let failed = MenuBarCandidate(state: .available, snapshot: avail(49, "claude").snapshot, fetchFailed: true, source: "claude")
+        XCTAssertEqual(makeMenuBarDisplay([limited(111, "codex"), failed]), .limited(until: now.addingTimeInterval(111 * 60), source: "codex"))
     }
 
     func testNoLimitShowsLowestRemainingWithItsSource() {

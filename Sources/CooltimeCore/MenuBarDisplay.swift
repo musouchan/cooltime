@@ -62,19 +62,14 @@ public struct MenuBarCandidate: Sendable {
 }
 
 /// 上から順に、当てはまったものを出す。
-///  1. 制限中があれば、一番早く戻るものの時間
-///  2. 制限なしなら、5時間枠など短い枠の、残りが最も少ないもの（「残り87%」）。
+///  1. 使えるサービスがあれば、その残りを出す（一部が制限中でも）。
+///     5時間枠など短い枠の、残りが最も少ないもの（「残り87%」）。
 ///     週・月の枠は、残りが10%を切ったときだけ、それを優先して出す（「週残り9%」）。
 ///     短い枠が1つも無いときは、週・月の枠の残りが最も少ないもの。割合が無ければ、残高が最も少ないもの
+///  2. 使えるものが無く、制限中があれば、一番早く戻るものの時間（「あと43分」）
 ///  3. 数字が1つも取れていなければ、キャラクターだけ
 /// 取得に失敗している・目安を過ぎた・未取得のものの数字は、使わない（古い数字を出さない）。
 public func makeMenuBarDisplay(_ items: [MenuBarCandidate]) -> MenuBarDisplay {
-    let limited = items.compactMap { item -> (Date, String)? in
-        if case .limited(let until) = item.state { return (until, item.source) }
-        return nil
-    }
-    if let first = limited.min(by: { $0.0 < $1.0 }) { return .limited(until: first.0, source: first.1) }
-
     let usable = items.filter { !$0.fetchFailed && $0.state == .available && $0.snapshot != nil }
     struct Pick { var percent: Int; var source: String; var scope: String? }
     var short: [Pick] = [], budget: [Pick] = []
@@ -100,5 +95,12 @@ public func makeMenuBarDisplay(_ items: [MenuBarCandidate]) -> MenuBarDisplay {
         item.snapshot?.credit.map { ($0, item.source) }
     }
     if let lowest = credits.min(by: { $0.0.amount < $1.0.amount }) { return .credit(text: formatMoney(lowest.0), source: lowest.1) }
+
+    // 使えるものが無いときだけ、制限中のうち、一番早く戻るものの時間
+    let limited = items.compactMap { item -> (Date, String)? in
+        if case .limited(let until) = item.state { return (until, item.source) }
+        return nil
+    }
+    if let first = limited.min(by: { $0.0 < $1.0 }) { return .limited(until: first.0, source: first.1) }
     return .failed
 }
