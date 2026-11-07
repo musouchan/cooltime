@@ -307,6 +307,27 @@ enum Fetchers {
                                      headers: bearer(token), allowRedirects: false)
                 return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
                                                                                 fetchedAt: now), identity: nil)
+            case "vertex-token-monitoring":
+                let config = try VertexTokenMonitoring.configuration(from: key)
+                let period = VertexTokenMonitoring.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.accessToken() }.value
+                var next: String?, seen = Set<String>()
+                var input = 0.0, output = 0.0, count = 0
+                repeat {
+                    data = try await get(VertexTokenMonitoring.url(config: config, period: period, pageToken: next),
+                                         headers: bearer(token), allowRedirects: false)
+                    let page = try VertexTokenMonitoring.parsePage(data, config: config)
+                    input += page.input; output += page.output; count += page.seriesCount
+                    next = page.nextPageToken
+                    if let next {
+                        guard seen.insert(next).inserted, seen.count < 100 else {
+                            throw ParseError.unsupported("Vertex AIのメトリクス全ページを取得できません")
+                        }
+                    }
+                } while next != nil
+                guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
+                return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
+                                                                                period: period, fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
