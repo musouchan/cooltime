@@ -289,6 +289,11 @@ enum Fetchers {
                 }
                 return FetchResult(snapshot: try ZendeskAIExportUsage.parse(files, botID: config.botID,
                                                                             day: day, fetchedAt: now), identity: nil)
+            case "composio-project-usage":
+                data = try await postJSON("https://backend.composio.dev/api/v3.1/project/usage/summary",
+                                          headers: ["x-api-key": key, "Content-Type": "application/json"],
+                                          body: ComposioProjectUsage.requestBody(now: now), allowRedirects: false)
+                return FetchResult(snapshot: try ComposioProjectUsage.parse(data, fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
