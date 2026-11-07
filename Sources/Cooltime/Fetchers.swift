@@ -307,6 +307,14 @@ enum Fetchers {
                                      headers: bearer(token), allowRedirects: false)
                 return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
                                                                                 fetchedAt: now), identity: nil)
+            case "gemini-api-request-usage":
+                let project = try GeminiAPIRequestUsage.projectID(from: key)
+                let period = GeminiAPIRequestUsage.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.accessToken() }.value
+                let snapshot = try await GeminiAPIRequestUsage.fetch(projectID: project, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "vertex-token-monitoring":
                 let config = try VertexTokenMonitoring.configuration(from: key)
                 let period = VertexTokenMonitoring.period(now: now)
