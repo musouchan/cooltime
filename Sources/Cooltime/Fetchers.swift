@@ -314,9 +314,9 @@ enum Fetchers {
                 var next: String?, seen = Set<String>()
                 var input = 0.0, output = 0.0, count = 0
                 repeat {
-                    data = try await get(VertexTokenMonitoring.url(config: config, period: period, pageToken: next),
-                                         headers: bearer(token), allowRedirects: false)
-                    let page = try VertexTokenMonitoring.parsePage(data, config: config)
+                    let pageData = try await get(VertexTokenMonitoring.url(config: config, period: period, pageToken: next),
+                                                 headers: bearer(token), allowRedirects: false)
+                    let page = try VertexTokenMonitoring.parsePage(pageData, config: config)
                     input += page.input; output += page.output; count += page.seriesCount
                     next = page.nextPageToken
                     if let next {
@@ -328,6 +328,13 @@ enum Fetchers {
                 guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
                 return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
                                                                                 period: period, fetchedAt: now), identity: nil)
+            case "magnific-team-credits":
+                let period = MagnificTeamCredits.period(now: now)
+                data = try await postJSON(MagnificTeamCredits.url,
+                                          headers: ["x-magnific-api-key": key, "Content-Type": "application/json"],
+                                          body: MagnificTeamCredits.requestBody(period: period), allowRedirects: false)
+                return FetchResult(snapshot: try MagnificTeamCredits.parse(data, period: period,
+                                                                          fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
