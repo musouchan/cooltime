@@ -46,6 +46,19 @@ Runway API・Luma Dream Machine API・Stability AI・Photoroom API・Meshy（ク
 Anthropic / OpenAI API のレート制限など）は載せていません。推定の数字も出しません。
 v0・Cursor は検証待ちのため、今回は入れていません。
 
+### Google Workspace Gemini（管理者の監査ログ）
+
+Admin SDK API を有効化した組織内向け Google Cloud プロジェクトで、Desktop OAuth クライアントを用意します。組織の OAuth アプリ制限で承認されたクライアントを使い、監査ログを閲覧できる Workspace 管理者で Google Cloud CLI の ADC にログインします。
+
+```sh
+gcloud auth application-default login --client-id-file=PATH_TO_DESKTOP_CLIENT_JSON \
+  --scopes=https://www.googleapis.com/auth/admin.reports.audit.readonly
+```
+
+Cooltimeで「Google Workspace Gemini（監査ログ件数）」を追加し、集計対象のプライマリメールアドレスを入力してください。1日以上前に終了した7 UTC日間の `feature_utilization` 監査レコードを数えます。APIで反映された件数で、残り枠やプロンプト件数とは別の指標です。Cooltimeはアクセストークンとログ本文を保存しません。
+
+[監査イベントの仕様](https://developers.google.com/workspace/admin/reports/v1/appendix/activity/gemini-in-workspace-apps) · [ADCの設定](https://docs.cloud.google.com/sdk/gcloud/reference/auth/application-default/login)
+
 ## Claude の使用量の取り方
 
 Claude の利用枠は、Claude アプリ・デスクトップの Code タブ・ターミナル版で共有されています。

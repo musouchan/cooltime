@@ -2,13 +2,15 @@ import Foundation
 import CooltimeCore
 
 enum GoogleCloudCLI {
-    static func accessToken() throws -> String {
+    static func accessToken(applicationDefault: Bool = false) throws -> String {
         let candidates = ["/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud", "/usr/bin/gcloud"]
         guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
         else { throw ParseError.unsupported("Google Cloud CLIが見つかりません") }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["auth", "print-access-token", "--quiet"]
+        process.arguments = applicationDefault
+            ? ["auth", "application-default", "print-access-token", "--quiet"]
+            : ["auth", "print-access-token", "--quiet"]
         process.environment = ProcessInfo.processInfo.environment
         let output = Pipe()
         process.standardOutput = output
