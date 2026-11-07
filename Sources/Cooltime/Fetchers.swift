@@ -272,6 +272,23 @@ enum Fetchers {
                     try SalesforceCLI.fetch(config: config, fetchedAt: now)
                 }.value
                 return FetchResult(snapshot: snapshot, identity: nil)
+            case "zendesk-ai-export-usage":
+                let config = try ZendeskAIExportUsage.configuration(from: key)
+                let day = ZendeskAIExportUsage.exportDay(now: now)
+                let body = try JSONSerialization.data(withJSONObject: ["date": day, "ttl": 10])
+                let linksData = try await postJSON(ZendeskAIExportUsage.endpoint(subdomain: config.subdomain),
+                                                   headers: ["authorization": config.token,
+                                                             "organizationId": config.organizationID,
+                                                             "botId": config.botID,
+                                                             "Content-Type": "application/json"],
+                                                   body: body, allowRedirects: false)
+                let links = try ZendeskAIExportUsage.signedURLs(linksData, day: day)
+                var files: [Data] = []
+                for link in links {
+                    files.append(try await get(link, headers: [:], allowRedirects: false))
+                }
+                return FetchResult(snapshot: try ZendeskAIExportUsage.parse(files, botID: config.botID,
+                                                                            day: day, fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
