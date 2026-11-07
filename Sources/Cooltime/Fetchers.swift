@@ -83,6 +83,9 @@ enum Fetchers {
                 // Antigravity CLI writes the official statusline quota JSON locally; no network/API call.
                 return FetchResult(snapshot: try readAntigravity(), identity: nil)
             }
+            if service.id == "jetbrains-ai-local-quota" {
+                return FetchResult(snapshot: try JetBrainsQuotaFiles.read(), identity: nil)
+            }
             // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
             // 取れなければ、ステータスラインの記録に戻る。
             if account.slot == "default" {
