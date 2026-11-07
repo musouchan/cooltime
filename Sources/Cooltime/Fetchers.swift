@@ -328,6 +328,13 @@ enum Fetchers {
                 guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
                 return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
                                                                                 period: period, fetchedAt: now), identity: nil)
+            case "magnific-team-credits":
+                let period = MagnificTeamCredits.period(now: now)
+                data = try await postJSON(MagnificTeamCredits.url,
+                                          headers: ["x-magnific-api-key": key, "Content-Type": "application/json"],
+                                          body: MagnificTeamCredits.requestBody(period: period), allowRedirects: false)
+                return FetchResult(snapshot: try MagnificTeamCredits.parse(data, period: period,
+                                                                          fetchedAt: now), identity: nil)
             case "kiro-enterprise-usage":
                 let config = try KiroEnterpriseUsage.configuration(from: key)
                 let snapshot = try await Task.detached {
