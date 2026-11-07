@@ -307,6 +307,12 @@ enum Fetchers {
                                      headers: bearer(token), allowRedirects: false)
                 return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
                                                                                 fetchedAt: now), identity: nil)
+            case "kling-api-package-usage":
+                guard key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw FetchError.noKey }
+                data = try await get(KlingAPIPackageUsage.url(now: now),
+                                     headers: ["Authorization": "Bearer \(key)", "Content-Type": "application/json"],
+                                     allowRedirects: false)
+                return FetchResult(snapshot: try KlingAPIPackageUsage.parse(data, fetchedAt: now), identity: nil)
             case "gemini-api-request-usage":
                 let project = try GeminiAPIRequestUsage.projectID(from: key)
                 let period = GeminiAPIRequestUsage.period(now: now)
