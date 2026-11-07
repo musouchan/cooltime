@@ -232,6 +232,17 @@ enum Fetchers {
                 data = try await get(url, headers: ["DD-API-KEY": config.apiKey,
                                                      "DD-APPLICATION-KEY": config.applicationKey], allowRedirects: false)
                 return FetchResult(snapshot: try DatadogBitsUsage.parse(data, fetchedAt: now), identity: nil)
+            case "grammarly-ai-usage":
+                let config = try GrammarlyUsage.configuration(key)
+                let tokenResponse = try await postJSON("https://auth.grammarly.com/v4/api/oauth2/token",
+                    headers: ["Content-Type": "application/x-www-form-urlencoded"],
+                    body: GrammarlyUsage.tokenBody(config), allowRedirects: false)
+                let token = try GrammarlyUsage.token(tokenResponse)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 48)
+                let snapshot = try await GrammarlyUsage.fetch(userID: config.userID, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "you-api-balance":
                 data = try await get("https://api.you.com/v1/billing/account_balance",
                                      headers: ["X-API-Key": key], allowRedirects: false)
@@ -305,7 +316,7 @@ enum Fetchers {
 
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }
 
-    private static func postJSON(_ url: String, headers: [String: String], body: Data) async throws -> Data {
+    private static func postJSON(_ url: String, headers: [String: String], body: Data, allowRedirects: Bool = true) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
         req.httpMethod = "POST"
         req.httpBody = body
@@ -313,7 +324,7 @@ enum Fetchers {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
         do {
-            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req, delegate: allowRedirects ? nil : BlockRedirects())
             let code = (res as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(code) else { throw FetchError.http(code) }
             return data
