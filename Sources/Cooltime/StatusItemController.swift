@@ -80,21 +80,29 @@ final class StatusItemController: NSObject {
 
     // MARK: 表示
 
-    /// うすい丸い背景。ライト・ダークで、文字の色（labelColor）を薄くしたものを使う。
+    /// 丸い背景。壁紙で透けて見づらくならないよう、背景に加えて、はっきりした枠線も付ける
+    /// （色は、文字と同じ labelColor から作るので、ライト・ダークのどちらでも、文字と同じだけ目立つ）。
+    /// 「コントラストを上げる」がオンのときは、さらに濃くする。角は、いちばん丸く（高さの半分）。
     private func applyBackground(to button: NSStatusBarButton) {
         button.wantsLayer = true
         guard let layer = button.layer else { return }
-        if CharacterPrefs.menuBarBackground {
-            var cg = NSColor.labelColor.withAlphaComponent(0.14).cgColor
-            button.effectiveAppearance.performAsCurrentDrawingAppearance {
-                cg = NSColor.labelColor.withAlphaComponent(0.14).cgColor
-            }
-            layer.backgroundColor = cg
-            layer.cornerRadius = 6
-            layer.cornerCurve = .continuous
-        } else {
+        guard CharacterPrefs.menuBarBackground else {
             layer.backgroundColor = nil
+            layer.borderWidth = 0
+            return
         }
+        let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        var fill = NSColor.labelColor.withAlphaComponent(high ? 0.30 : 0.20).cgColor
+        var line = NSColor.labelColor.withAlphaComponent(high ? 0.95 : 0.65).cgColor
+        button.effectiveAppearance.performAsCurrentDrawingAppearance {
+            fill = NSColor.labelColor.withAlphaComponent(high ? 0.30 : 0.20).cgColor
+            line = NSColor.labelColor.withAlphaComponent(high ? 0.95 : 0.65).cgColor
+        }
+        layer.backgroundColor = fill
+        layer.borderColor = line
+        layer.borderWidth = high ? 1.5 : 1
+        layer.cornerRadius = 999   // 高さの半分に丸められる（完全なカプセル形）
+        layer.cornerCurve = .circular
     }
 
     private func refresh() {
@@ -119,7 +127,7 @@ final class StatusItemController: NSObject {
                     title.append(NSAttributedString(attachment: attachment))
                     title.append(NSAttributedString(string: " "))
                 }
-                title.append(NSAttributedString(string: text, attributes: [
+                title.append(NSAttributedString(string: text + " ", attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
                 ]))
                 button.attributedTitle = title
