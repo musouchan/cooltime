@@ -226,6 +226,8 @@ final class AppModel: ObservableObject {
             let local: Snapshot?
             if a.serviceID == "sheet-11" {
                 local = try? Fetchers.readAntigravity()
+            } else if a.serviceID == "jetbrains-ai-local-quota" {
+                local = try? JetBrainsQuotaFiles.read()
             } else {
                 local = try? Fetchers.readClaude(slot: a.slot)
             }
