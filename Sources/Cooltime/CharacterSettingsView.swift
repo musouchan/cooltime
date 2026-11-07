@@ -11,6 +11,7 @@ struct CharacterSettingsView: View {
     @AppStorage(ResetTimeStyle.key) private var timeStyle = ResetTimeStyle.absolute.rawValue
     @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
     @AppStorage(CharacterPrefs.compactKey) private var compact = false
+    @AppStorage(CharacterPrefs.backgroundKey) private var background = true
     @AppStorage(IMessageNotifier.enabledKey) private var notifyEnabled = true
     @AppStorage(IMessageNotifier.handleKey) private var notifyHandle = ""
     @State private var notifyResult: String?
@@ -53,7 +54,8 @@ struct CharacterSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("メニューバーの幅").font(.title3).fontWeight(.semibold)
+                    Text("メニューバーの見た目").font(.title3).fontWeight(.semibold)
+                    Toggle("うすい丸い背景を付ける（他のアイコンと見分けやすくなります）", isOn: $background)
                     Toggle("せまくする（サービスのアイコンなし・短い文字）", isOn: $compact)
                     Text("メニューバーが混んでいると、macOS は、入りきらないアイコンを、何も言わずに隠します。Cooltime が出てこないときに、オンにしてください。Command キーを押しながら、アイコンをドラッグすると、位置も動かせます。")
                         .font(.caption).foregroundStyle(.secondary)
