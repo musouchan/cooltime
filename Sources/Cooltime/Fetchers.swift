@@ -307,6 +307,10 @@ enum Fetchers {
                                      headers: bearer(token), allowRedirects: false)
                 return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
                                                                                 fetchedAt: now), identity: nil)
+            case "thoughtspot-spotter-usage":
+                let config = try ThoughtSpotSpotterUsage.configuration(from: key)
+                data = try await get(config.url, headers: bearer(config.token), allowRedirects: false)
+                return FetchResult(snapshot: try ThoughtSpotSpotterUsage.parse(data, fetchedAt: now), identity: nil)
             case "kling-api-package-usage":
                 guard key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw FetchError.noKey }
                 data = try await get(KlingAPIPackageUsage.url(now: now),
