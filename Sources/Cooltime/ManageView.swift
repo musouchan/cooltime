@@ -4,7 +4,6 @@ import CooltimeCore
 
 struct ManageView: View {
     @EnvironmentObject var model: AppModel
-    @EnvironmentObject var updater: Updater
     @EnvironmentObject var actions: AppActions
     @State private var adding = false
     @State private var pendingDelete: Account?
@@ -13,14 +12,20 @@ struct ManageView: View {
         NavigationSplitView {
             VStack(spacing: 0) {
                 List(selection: $model.selected) {
-                    Section("サブスク（プランの利用枠）") {
+                    Section {
                         ForEach(model.subscriptions) { sidebarRow($0) }
+                    } header: {
+                        HStack {
+                            Text("サブスク（プランの利用枠）")
+                            Spacer()
+                            Button { Task { await model.refreshAll() } } label: { Image(systemName: "arrow.clockwise") }
+                                .buttonStyle(.borderless)
+                                .help("すべてのサービスを今すぐ更新します（通信します）")
+                                .accessibilityLabel("すべて更新")
+                        }
                     }
                     Section("API・クレジット") {
                         ForEach(model.items.filter { $0.service.kind == .credit }) { sidebarRow($0) }
-                    }
-                    Section("表示") {
-                        Label("表示の設定", systemImage: "slider.horizontal.3").tag(AppModel.characterPane)
                     }
                 }
                 Divider()
@@ -36,17 +41,16 @@ struct ManageView: View {
                 .padding(8)
                 HStack {
                     Button { actions.openReview() } label: { Label("振り返り", systemImage: "chart.bar") }
-                    Button { Task { await model.refreshAll() } } label: { Label("すべて更新", systemImage: "arrow.clockwise") }
-                        .help("すべてのサービスを今すぐ更新します（通信します）")
+                    Button { model.selected = AppModel.settingsPane } label: { Label("設定", systemImage: "gearshape") }
+                        .tint(model.selected == AppModel.settingsPane ? .accentColor : nil)
                     Spacer()
                 }
-                .padding(.horizontal, 8).padding(.bottom, 6)
-                if updater.canUpdate { updateBar }
+                .padding(.horizontal, 8).padding(.bottom, 8)
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 250)
         } detail: {
-            if model.selected == AppModel.characterPane {
-                CharacterSettingsView().environmentObject(model)
+            if model.selected == AppModel.settingsPane {
+                SettingsView().environmentObject(model)
             } else if let id = model.selected, let item = model.items.first(where: { $0.id == id }) {
                 DetailView(item: item).id(id)
             } else {
@@ -67,29 +71,6 @@ struct ManageView: View {
             let name = Catalog.service(a.serviceID)?.name ?? ""
             Text("「\(name)」の設定と、取得したデータを削除します。保存したAPIキーも、Keychain から削除します。自動で見つかったものは、次の起動でも戻りません（「＋」からいつでも追加できます）。")
         }
-    }
-
-    /// 更新の確認も、入れ替えも、ボタンを押したときだけ。
-    private var updateBar: some View {
-        HStack {
-            switch updater.state {
-            case .idle, .upToDate, .failed:
-                Button("更新を確認") { Task { await updater.check() } }
-                switch updater.state {
-                case .upToDate: Text("最新です").font(.caption2).foregroundStyle(.secondary)
-                case .failed(let m): Text(m).font(.caption2).foregroundStyle(.red).lineLimit(2)
-                default: EmptyView()
-                }
-            case .checking:
-                Text("確認中…").font(.caption2).foregroundStyle(.secondary)
-            case .available(let v):
-                Button("\(v) に更新して再起動") { Task { await updater.install() } }
-            case .installing:
-                Text("入れ替え中…").font(.caption2).foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 8).padding(.bottom, 8)
     }
 
     /// 「Cooltime 0.1.0 (abc1234)」。タグのビルドは版、ほかは短いコミット ID が付く。

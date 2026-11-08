@@ -209,8 +209,8 @@ final class AppModel: ObservableObject {
         }.joined(separator: "\n")
     }
 
-    /// 管理画面の「キャラクター」の行（アカウントではないので、決まった ID で選ぶ）。
-    static let characterPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
+    /// 管理画面の「設定」（アカウントではないので、決まった ID で選ぶ）。
+    static let settingsPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
 
     // MARK: 取得
 

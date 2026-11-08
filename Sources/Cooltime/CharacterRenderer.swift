@@ -14,14 +14,6 @@ enum MotionSetting: String, CaseIterable, Identifiable {
     }
 }
 
-/// 残りの棒と、振り返りのグラフの見た目。既定はシンプル。メニューバーは、いつもシンプル。
-enum DisplayStyle: String, CaseIterable, Identifiable {
-    case simple, ghost
-    static let key = "displayStyle"
-    var id: String { rawValue }
-    var label: String { self == .simple ? "シンプル" : "おばけ" }
-}
-
 /// リセットの書き方。既定は日時（「17:20 リセット」）。選べる。
 enum ResetTimeStyle: String, CaseIterable, Identifiable {
     case absolute, relative
