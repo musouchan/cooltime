@@ -15,9 +15,6 @@ struct CharacterSettingsView: View {
     @AppStorage(IMessageNotifier.enabledKey) private var notifyEnabled = true
     @AppStorage(IMessageNotifier.handleKey) private var notifyHandle = ""
     @State private var notifyResult: String?
-    @AppStorage(StatusPageWriter.enabledKey) private var pageEnabled = false
-    @AppStorage(StatusPageWriter.widgetKey) private var widgetEnabled = false
-    @EnvironmentObject private var model: AppModel
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -86,18 +83,7 @@ struct CharacterSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("スマホで見る").font(.title3).fontWeight(.semibold)
-                    Toggle("残りと戻る時刻の一覧を、iCloud Drive に書き出す", isOn: $pageEnabled)
-                        .onChange(of: pageEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
-                    Toggle("iPhone のウィジェット（Scriptable）用のデータを書き出す", isOn: $widgetEnabled)
-                        .onChange(of: widgetEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
-                    Text("iPhone に、無料の Scriptable アプリを入れて、iCloud をオンにして一度開いてください。そのあと、ホーム画面を長押し → ＋ → Scriptable → ウィジェットを追加 → 長押しして編集 → Script で「Cooltime」を選びます（Cooltime.js は、自動で置かれます）。ウィジェットは、OS が5〜15分おきに読み直すので、Mac のメニューバーより遅れます。上に「○時○分 時点」と出します。")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if (pageEnabled || widgetEnabled), let e = model.pageError { Label(e, systemImage: "exclamationmark.triangle").font(.callout) }
-                    Text("iPhone の「ファイル」アプリ → iCloud Drive → 「Cooltime」→ index.html で開けます（共有ボタンから「ホーム画面に追加」もできます）。Mac が起きている間だけ、1分おきに更新されます。ページには、残り・戻る時刻・サービス名だけを書き、APIキーは書きません。外のサービスは使いません。初めて書くとき、フォルダへのアクセスの許可を聞かれることがあります。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
+                PhoneSettingsSection()
 
                 Divider()
 
@@ -154,5 +140,29 @@ struct CharacterSettingsView: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.12) : Color.clear))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: selected ? 2 : 1))
+    }
+}
+
+
+/// 「スマホで見る」。モデルの変化（20秒ごと）で、キャラクターの一覧まで描き直さないよう、別の部品にしてある。
+@MainActor
+private struct PhoneSettingsSection: View {
+    @AppStorage(StatusPageWriter.enabledKey) private var pageEnabled = false
+    @AppStorage(StatusPageWriter.widgetKey) private var widgetEnabled = false
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("スマホで見る").font(.title3).fontWeight(.semibold)
+                Toggle("残りと戻る時刻の一覧を、iCloud Drive に書き出す", isOn: $pageEnabled)
+                    .onChange(of: pageEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
+                Toggle("iPhone のウィジェット（Scriptable）用のデータを書き出す", isOn: $widgetEnabled)
+                    .onChange(of: widgetEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
+                Text("iPhone に、無料の Scriptable アプリを入れて、iCloud をオンにして一度開いてください。そのあと、ホーム画面を長押し → ＋ → Scriptable → ウィジェットを追加 → 長押しして編集 → Script で「Cooltime」を選びます（Cooltime.js は、自動で置かれます）。ウィジェットは、OS が5〜15分おきに読み直すので、Mac のメニューバーより遅れます。上に「○時○分 時点」と出します。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if (pageEnabled || widgetEnabled), let e = model.pageError { Label(e, systemImage: "exclamationmark.triangle").font(.callout) }
+                Text("iPhone の「ファイル」アプリ → iCloud Drive → 「Cooltime」→ index.html で開けます（共有ボタンから「ホーム画面に追加」もできます）。Mac が起きている間だけ、1分おきに更新されます。ページには、残り・戻る時刻・サービス名だけを書き、APIキーは書きません。外のサービスは使いません。初めて書くとき、フォルダへのアクセスの許可を聞かれることがあります。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
     }
 }
