@@ -95,6 +95,7 @@ final class StatusItemController: NSObject {
         guard CharacterPrefs.menuBarBackground else {
             layer.backgroundColor = nil
             layer.borderWidth = 0
+            layer.cornerRadius = 0
             return
         }
         let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
@@ -107,8 +108,10 @@ final class StatusItemController: NSObject {
         layer.backgroundColor = fill
         layer.borderColor = line
         layer.borderWidth = high ? 1.5 : 1
-        layer.cornerRadius = 999   // 高さの半分に丸められる（完全なカプセル形）
-        layer.cornerCurve = .circular
+        // 完全なカプセル形にするため、高さの半分にする。
+        // 高さを超える大きな値（999 など）は、アイコンごと見えなくなる恐れがあるので、使わない。
+        let h = button.bounds.height
+        layer.cornerRadius = h > 0 ? h / 2 : 11
     }
 
     private func refresh() {
