@@ -109,6 +109,12 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "ada-resolution-usage":
+                let config = try AdaResolutionUsage.configuration(from: key)
+                let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
+                    try await get(url, headers: bearer(config.token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "livekit-cloud-sessions":
                 let config = try LiveKitCloudSessions.configuration(from: key)
                 let token = try LiveKitCloudSessions.accessToken(config: config, now: now)
