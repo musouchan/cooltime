@@ -1,4 +1,5 @@
 import Foundation
+import CooltimeCore
 
 /// Executes only the read-only account command using credentials already owned by the official CLI.
 enum OpenArtCLI {
