@@ -263,12 +263,19 @@ final class AppModel: ObservableObject {
             StatusEntry(title: $0.title, state: $0.state, windows: $0.snapshot?.windows ?? [], credit: $0.snapshot?.credit,
                         fetchedAt: $0.snapshot?.fetchedAt, failed: $0.fetchError != nil, key: $0.account.id.uuidString)
         }
-        var errors: [String] = []
-        if StatusPageWriter.isEnabled, let e = StatusPageWriter.write(entries, now: clock.now) { errors.append(e) }
-        if StatusPageWriter.widgetEnabled, let e = StatusPageWriter.writeWidget(entries, now: clock.now) { errors.append(e) }
-        pageError = errors.isEmpty ? nil : errors.joined(separator: "\n")
+        // iCloud のフォルダへの書き込みは、待たされることがある。画面（メインスレッド）を止めないよう、別のところで書く。
+        let at = clock.now
+        let page = StatusPageWriter.isEnabled, widget = StatusPageWriter.widgetEnabled
+        if page || widget {
+            Task.detached(priority: .utility) { [weak self] in
+                var errors: [String] = []
+                if page, let e = StatusPageWriter.write(entries, now: at) { errors.append(e) }
+                if widget, let e = StatusPageWriter.writeWidget(entries, now: at) { errors.append(e) }
+                let message = errors.isEmpty ? nil : errors.joined(separator: "\n")
+                await MainActor.run { self?.pageError = message }
+            }
+        }
         if RemindersSync.isEnabled {
-            let at = clock.now
             Task { reminderError = await RemindersSync.sync(entries, now: at) }
         }
     }

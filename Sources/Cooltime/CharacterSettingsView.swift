@@ -27,7 +27,6 @@ struct CharacterSettingsView: View {
         return nil
     }
 
-    private let states: [(CharacterState, String)] = [(.ok, "制限なし"), (.limit, "制限中"), (.fail, "取得に失敗")]
 
     var body: some View {
         ScrollView {
@@ -92,7 +91,7 @@ struct CharacterSettingsView: View {
 
                 VStack(spacing: 8) {
                     ForEach(CharacterData.ids, id: \.self) { id in
-                        Button { characterID = id } label: { row(id) }
+                        Button { characterID = id } label: { CharacterRow(id: id, selected: characterID == id) }
                             .buttonStyle(.plain)
                             .accessibilityLabel(CharacterData.names[id] ?? id)
                             .accessibilityAddTraits(characterID == id ? [.isSelected] : [])
@@ -119,27 +118,6 @@ struct CharacterSettingsView: View {
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
             reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         }
-    }
-
-    private func row(_ id: String) -> some View {
-        let selected = characterID == id
-        return HStack(spacing: 16) {
-            Text(CharacterData.names[id] ?? id).frame(width: 64, alignment: .leading)
-            ForEach(states, id: \.0) { state, label in
-                VStack(spacing: 4) {
-                    Image(nsImage: CharacterRenderer.image(id: id, state: state, time: 0, points: 40))
-                        .renderingMode(.template)
-                        .frame(width: 40, height: 40)
-                    Text(label).font(.caption2).foregroundStyle(.secondary)
-                }
-                .frame(width: 72)
-            }
-            Spacer()
-            if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor) }
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.12) : Color.clear))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: selected ? 2 : 1))
     }
 }
 
@@ -176,5 +154,36 @@ private struct PhoneSettingsSection: View {
                 Text("iPhone の「ファイル」アプリ → iCloud Drive → 「Cooltime」→ index.html で開けます（共有ボタンから「ホーム画面に追加」もできます）。Mac が起きている間だけ、1分おきに更新されます。ページには、残り・戻る時刻・サービス名だけを書き、APIキーは書きません。外のサービスは使いません。初めて書くとき、フォルダへのアクセスの許可を聞かれることがあります。")
                     .font(.caption).foregroundStyle(.secondary)
             }
+    }
+}
+
+
+/// キャラクターの1行。選んだ・選ばなかった行だけが描き直されるよう、別の部品にしてある（引数が同じなら、描き直さない）。
+private struct CharacterRow: View {
+    let id: String
+    let selected: Bool
+    private static let states: [(CharacterState, String)] = [(.ok, "制限なし"), (.limit, "制限中"), (.fail, "取得に失敗")]
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text(CharacterData.names[id] ?? id).frame(width: 64, alignment: .leading)
+            ForEach(Self.states, id: \.0) { state, label in
+                VStack(spacing: 4) {
+                    Image(nsImage: CharacterRenderer.image(id: id, state: state, time: 0, points: 40))
+                        .renderingMode(.template)
+                        .frame(width: 40, height: 40)
+                    Text(label).font(.caption2).foregroundStyle(.secondary)
+                }
+                .frame(width: 72)
+            }
+            Spacer()
+            if selected { Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.accentColor) }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.12) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: selected ? 2 : 1))
+        // 枠の中のどこを押しても反応するように、押せる範囲を枠全体にする。
+        // （これが無いと、透明な背景と余白は押せず、文字か絵の上を押したときだけ反応していた）
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
