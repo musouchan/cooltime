@@ -196,6 +196,76 @@ public enum DeepSeek {
     }
 }
 
+// MARK: - Tavily Usage API
+
+public enum TavilyUsage {
+    /// GET https://api.tavily.com/usage. Counts and limits are returned as documented by Tavily.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        var windows: [UsageWindow] = []
+        if let key = root["key"] as? [String: Any],
+           let usage = number(key["usage"]), let limit = number(key["limit"]), limit > 0 {
+            windows.append(window(label: "APIキーの利用枠", used: usage, limit: limit))
+        }
+        if let account = root["account"] as? [String: Any] {
+            if let usage = number(account["plan_usage"]), let limit = number(account["plan_limit"]), limit > 0 {
+                windows.append(window(label: "アカウントのプラン枠", used: usage, limit: limit))
+            }
+            if let usage = number(account["paygo_usage"]), let limit = number(account["paygo_limit"]), limit > 0 {
+                windows.append(window(label: "従量課金枠", used: usage, limit: limit))
+            }
+        }
+        guard !windows.isEmpty else { throw ParseError.invalid("usage と対応する limit が見つかりません") }
+        return Snapshot(windows: windows, fetchedAt: fetchedAt)
+    }
+
+    private static func window(label: String, used: Double, limit: Double) -> UsageWindow {
+        UsageWindow(label: label, usedPercent: used / limit * 100, remainingCount: max(0, limit - used))
+    }
+}
+
+// MARK: - Apollo Credit Usage API
+
+public enum ApolloCredits {
+    /// POST https://api.apollo.io/api/v1/usage_stats/credit_usage_stats
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let stats = root["credit_usage_stats"] as? [String: Any] else {
+            throw ParseError.invalid("credit_usage_stats がありません")
+        }
+        let cycle = root["current_credit_cycle"] as? [String: Any]
+        let resetsAt = parseDate(cycle?["end_date"])
+        var windows: [UsageWindow] = []
+        for key in stats.keys.sorted() {
+            guard let item = stats[key] as? [String: Any],
+                  let limit = number(item["limit"]), let consumed = number(item["consumed"]),
+                  let remaining = number(item["left_over"]), limit >= 0, consumed >= 0, remaining >= 0 else {
+                throw ParseError.invalid("\(key) の limit / consumed / left_over がありません")
+            }
+            // limit 0 は契約に含まれない credit type。
+            guard limit > 0 else { continue }
+            let label = labels[key] ?? key
+            windows.append(UsageWindow(label: label, usedPercent: consumed / limit * 100,
+                                       remainingCount: remaining, resetsAt: resetsAt))
+        }
+        guard !windows.isEmpty else { throw ParseError.unsupported("このプランに取得可能なクレジット枠がありません") }
+        return Snapshot(windows: windows, fetchedAt: fetchedAt)
+    }
+
+    private static let labels: [String: String] = [
+        "lead_credit": "リードクレジット",
+        "direct_dial_credit": "直通電話クレジット",
+        "export_credit": "エクスポートクレジット",
+        "conversation_credit": "会話クレジット",
+        "ai_credit": "AIクレジット",
+        "power_up_credit": "Power Upクレジット",
+        "inbound_website_visitor_credit": "Inbound訪問者クレジット",
+        "contact_website_visitor_credit": "Contact訪問者クレジット",
+        "web_search_record_credit": "Web検索レコードクレジット",
+        "dialer": "ダイヤラー利用分（分）"
+    ]
+}
+
 // MARK: - 追加のAPI（スプレッドシートの調査どおり。実機で要確認）
 //
 // 公式の資料を、この開発環境から読めなかったため、入口と項目名は、調査表に書かれたものと、
@@ -381,4 +451,74 @@ public enum Tripo {
     }
 
     private static func formatNumber(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(format: "%.2f", v) }
+}
+
+
+// MARK: - Poe Usage API
+
+public enum PoeBalance {
+    /// GET https://api.poe.com/usage/current_balance returns the account's current points.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let raw = number(root["current_point_balance"]), raw >= 0, raw.rounded() == raw else {
+            throw ParseError.invalid("current_point_balance がありません")
+        }
+        return Snapshot(credit: CreditBalance(amount: raw, currency: "points"), fetchedAt: fetchedAt)
+    }
+}
+
+
+// MARK: - Elicit Usage API
+
+public enum ElicitUsage {
+    /// GET https://elicit.com/api/v2/usage returns plan usage and optional extra-usage spend.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard let available = root["hasUsageRemaining"] as? Bool,
+              let percent = number(root["percentUsed"]), percent >= 0, percent <= 100 else {
+            throw ParseError.invalid("hasUsageRemaining / percentUsed がありません")
+        }
+        let periodEnd = parseDate(root["periodEnd"])
+        let windows = [UsageWindow(label: "請求期間のプラン利用",
+                                   usedPercent: percent,
+                                   resetsAt: periodEnd)]
+        var credit: CreditBalance?
+        if let extra = root["extraUsage"] as? [String: Any] {
+            guard let spentCents = number(extra["spentUsdCents"]), spentCents >= 0 else {
+                throw ParseError.invalid("extraUsage.spentUsdCents がありません")
+            }
+            if let limitValue = extra["limitUsdCents"], !(limitValue is NSNull) {
+                guard let limitCents = number(limitValue), limitCents >= spentCents else {
+                    throw ParseError.invalid("extraUsage.limitUsdCents が不正です")
+                }
+                credit = CreditBalance(amount: (limitCents - spentCents) / 100,
+                                       currency: "USD",
+                                       resetsAt: periodEnd,
+                                       note: "追加利用の残額")
+            }
+        } else if !(root["extraUsage"] is NSNull) {
+            throw ParseError.invalid("extraUsage が不正です")
+        }
+        // hasUsageRemaining also accounts for per-member weekly caps. Preserve the
+        // exact billing-period percentage instead of rewriting it to imply exhaustion.
+        _ = available
+        return Snapshot(windows: windows, credit: credit, fetchedAt: fetchedAt)
+    }
+}
+
+
+// MARK: - HeadshotPro Organization Credits API
+
+public enum HeadshotProCredits {
+    /// GET https://server.headshotpro.com/api/v2/organization/credits.
+    public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
+        let root = try json(data)
+        guard root["success"] as? Bool == true,
+              let credits = number(root["credits"]),
+              credits >= 0, credits.rounded() == credits else {
+            throw ParseError.invalid("credits がありません")
+        }
+        return Snapshot(credit: CreditBalance(amount: credits, currency: "credits"),
+                        fetchedAt: fetchedAt)
+    }
 }

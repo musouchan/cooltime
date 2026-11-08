@@ -36,6 +36,8 @@ enum Paths {
     /// 使用状況の記録（枠の%と時刻だけ。会話の中身は持たない）。
     static var history: URL { dir.appendingPathComponent("history.json") }
     static func statusline(slot: String) -> URL { dir.appendingPathComponent("claude-\(slot).json") }
+    /// Antigravity CLI statusline script writes only the quota object here (user opt-in).
+    static var antigravityStatusline: URL { dir.appendingPathComponent("antigravity-quota.json") }
     /// Claude Code の Stop フックが更新する合図のファイル（中身は空）。
     static var claudePing: URL { dir.appendingPathComponent("claude-ping") }
 }
@@ -63,11 +65,27 @@ enum Fetchers {
         return try ClaudeStatusline.parse(data, fetchedAt: mtime)
     }
 
+    static func readAntigravity() throws -> Snapshot {
+        let url = Paths.antigravityStatusline
+        guard let data = try? Data(contentsOf: url) else { throw FetchError.noFile }
+        let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date()
+        return try AntigravityStatusline.parse(data, fetchedAt: mtime)
+    }
+
     /// 通信を伴う取得。更新ボタンのときだけ呼ぶ。送り先は各サービスの公式の窓口だけ。
     static func fetch(account: Account, service: ServiceDef) async throws -> FetchResult {
         let now = Date()
         switch service.method {
+        case .manual:
+            throw ParseError.unsupported("手動記録サービスは自動取得しません")
         case .statuslineFile:
+            if service.id == "sheet-11" {
+                // Antigravity CLI writes the official statusline quota JSON locally; no network/API call.
+                return FetchResult(snapshot: try readAntigravity(), identity: nil)
+            }
+            if service.id == "jetbrains-ai-local-quota" {
+                return FetchResult(snapshot: try JetBrainsQuotaFiles.read(), identity: nil)
+            }
             // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
             // 取れなければ、ステータスラインの記録に戻る。
             if account.slot == "default" {
@@ -91,6 +109,58 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "ada-resolution-usage":
+                let config = try AdaResolutionUsage.configuration(from: key)
+                let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
+                    try await get(url, headers: bearer(config.token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "livekit-cloud-sessions":
+                let config = try LiveKitCloudSessions.configuration(from: key)
+                let token = try LiveKitCloudSessions.accessToken(config: config, now: now)
+                let snapshot = try await LiveKitCloudSessions.fetch(config: config, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "intercom-fin-conversations":
+                let period = IntercomFinConversations.period(now: now)
+                data = try await postJSON("https://api.intercom.io/conversations/search",
+                                          headers: bearer(key).merging(["Content-Type": "application/json",
+                                                                       "Intercom-Version": "2.17"]) { $1 },
+                                          body: IntercomFinConversations.requestBody(period: period),
+                                          allowRedirects: false)
+                return FetchResult(snapshot: try IntercomFinConversations.parse(data, fetchedAt: now), identity: nil)
+            case "openart-cli-balance":
+                guard key == "default" else { throw ParseError.unsupported("OpenArt設定にはdefaultを入力してください") }
+                let output = try await Task.detached { try OpenArtCLI.account() }.value
+                return FetchResult(snapshot: try OpenArtCLIBalance.parse(output, fetchedAt: now), identity: nil)
+            case "gemini-cli-local-usage":
+                let snapshot = try GeminiCLILocalUsage.read(path: key)
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "figma-ai-usage":
+                let config = try FigmaAIUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 6)
+                let snapshot = try await FigmaAIUsage.fetch(email: config.email, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: ["X-Figma-Token": config.token], allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "augment-credit-usage":
+                let config = try AugmentCreditUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 2)
+                let snapshot = try await AugmentCreditUsage.fetch(email: config.email, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(config.token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "opencode-go-usage":
+                let config = try OpenCodeGoUsage.configuration(from: key)
+                data = try await get(config.url, headers: ["Authorization": config.authorization],
+                                     allowRedirects: false, loopbackOnly: true)
+                return FetchResult(snapshot: try OpenCodeGoUsage.parse(data, workspace: config.workspace, fetchedAt: now), identity: nil)
+            case "huggingface-inference-usage":
+                let config = try HuggingFaceUsage.configuration(from: key)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 2)
+                let page = try await getUsagePage(HuggingFaceUsage.url(organization: config.organization, period: period), headers: bearer(config.token))
+                return FetchResult(snapshot: try HuggingFaceUsage.parse(page.data, linkHeader: page.link, period: period, fetchedAt: now), identity: nil)
             case "elevenlabs":
                 data = try await get("https://api.elevenlabs.io/v1/user/subscription", headers: ["xi-api-key": key])
                 return FetchResult(snapshot: try ElevenLabs.parse(data, fetchedAt: now), identity: nil)
@@ -133,6 +203,235 @@ enum Fetchers {
             case "meshy":
                 data = try await get("https://api.meshy.ai/openapi/v1/balance", headers: bearer(key))
                 return FetchResult(snapshot: try Meshy.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-168":
+                data = try await get("https://server.headshotpro.com/api/v2/organization/credits", headers: bearer(key))
+                return FetchResult(snapshot: try HeadshotProCredits.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-20":
+                let cyclesData = try await get("https://api.devin.ai/v3/enterprise/consumption/cycles?first=200", headers: bearer(key))
+                let cycle = try DevinEnterpriseUsage.currentCycle(in: cyclesData, now: now)
+                let budgetsData = try await get("https://api.devin.ai/v3beta1/enterprise/usage-policies/budgets?first=200", headers: bearer(key))
+                let usageURL = "https://api.devin.ai/v3/enterprise/consumption/daily?time_after=\(cycle.after)&time_before=\(cycle.before)"
+                data = try await get(usageURL, headers: bearer(key))
+                return FetchResult(snapshot: try DevinEnterpriseUsage.parse(cyclesData: cyclesData,
+                                                                           budgetsData: budgetsData,
+                                                                           consumptionData: data,
+                                                                           now: now, fetchedAt: now), identity: nil)
+            case "sheet-86":
+                let limitData = try await get("https://api.openai.com/v1/organization/spend_limit", headers: bearer(key))
+                let costsURL = OpenAIPlatformUsage.costsURL(now: now)
+                data = try await get(costsURL, headers: bearer(key))
+                return FetchResult(snapshot: try OpenAIPlatformUsage.parse(limitData: limitData,
+                                                                           costsData: data,
+                                                                           now: now, fetchedAt: now), identity: nil)
+            case "sheet-87":
+                let anthropicHeaders = ["x-api-key": key,
+                                        "anthropic-version": AnthropicUsage.apiVersion,
+                                        "anthropic-beta": AnthropicUsage.betaHeader]
+                data = try await get(AnthropicUsage.costsURL(now: now), headers: anthropicHeaders)
+                return FetchResult(snapshot: try AnthropicUsage.parse(data), identity: nil)
+            case "sheet-90":
+                let headers = bearer(key).merging(["Content-Type": "application/json"]) { $1 }
+                let validation = try await get("https://management-api.x.ai/auth/management-keys/validation", headers: bearer(key))
+                let teamID = try XAIUsage.teamID(from: validation)
+                let body = try XAIUsage.usageRequestBody(now: now)
+                data = try await postJSON(XAIUsage.usageURL(teamID: teamID), headers: headers, body: body)
+                return FetchResult(snapshot: try XAIUsage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-93":
+                data = try await get(TogetherBilling.usageURL(now: now), headers: bearer(key))
+                return FetchResult(snapshot: try TogetherBilling.parse(data, expectedMonth: TogetherBilling.monthString(now),
+                                                                       fetchedAt: now), identity: nil)
+            case "sheet-104":
+                data = try await get("https://admin-api.exa.ai/team-management/credits", headers: ["x-api-key": key])
+                return FetchResult(snapshot: try ExaCredits.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-112":
+                data = try await get("https://context7.com/api/v2/usage?days=30", headers: bearer(key))
+                return FetchResult(snapshot: try Context7Usage.parse(data, fetchedAt: now), identity: nil)
+            case "browserbase-usage":
+                let config = try BrowserbaseUsage.configuration(from: key)
+                data = try await get(config.url, headers: ["X-BB-API-Key": config.apiKey], allowRedirects: false)
+                return FetchResult(snapshot: try BrowserbaseUsage.parse(data, fetchedAt: now), identity: nil)
+            case "langsmith-trace-usage":
+                let config = try LangSmithUsage.configuration(from: key)
+                let period = LangSmithUsage.period(endingBefore: now)
+                let url = try LangSmithUsage.url(for: config.region, workspace: config.workspace, period: period)
+                data = try await get(url, headers: ["x-api-key": config.apiKey], allowRedirects: false)
+                return FetchResult(snapshot: try LangSmithUsage.parse(data, workspace: config.workspace, period: period,
+                                                                      fetchedAt: now), identity: nil)
+            case "datadog-bits-usage":
+                let config = try DatadogBitsUsage.configuration(from: key)
+                let url = try DatadogBitsUsage.url(for: config.site, now: now)
+                data = try await get(url, headers: ["DD-API-KEY": config.apiKey,
+                                                     "DD-APPLICATION-KEY": config.applicationKey], allowRedirects: false)
+                return FetchResult(snapshot: try DatadogBitsUsage.parse(data, fetchedAt: now), identity: nil)
+            case "grammarly-ai-usage":
+                let config = try GrammarlyUsage.configuration(key)
+                let tokenResponse = try await postJSON("https://auth.grammarly.com/v4/api/oauth2/token",
+                    headers: ["Content-Type": "application/x-www-form-urlencoded"],
+                    body: GrammarlyUsage.tokenBody(config), allowRedirects: false)
+                let token = try GrammarlyUsage.token(tokenResponse)
+                let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 48)
+                let snapshot = try await GrammarlyUsage.fetch(userID: config.userID, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "jasper-api-usage":
+                let period = JasperAPIUsage.previousSevenDays(now: now)
+                data = try await get(JasperAPIUsage.url(period: period),
+                                     headers: ["X-API-Key": key], allowRedirects: false)
+                return FetchResult(snapshot: try JasperAPIUsage.parse(data, period: period,
+                                                                       fetchedAt: now), identity: nil)
+            case "aws-bedrock-usage":
+                let config = try BedrockCloudWatchUsage.configuration(from: key)
+                let period = BedrockCloudWatchUsage.previousSevenDays(now: now)
+                let snapshot = try await Task.detached {
+                    try BedrockAWSCLI.fetch(config: config, period: period, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "azure-foundry-monitor-usage":
+                let config = try AzureFoundryMonitorUsage.configuration(from: key)
+                let period = AzureFoundryMonitorUsage.previousSevenDays(now: now)
+                let snapshot = try await Task.detached {
+                    try AzureMonitorCLI.fetch(config: config, period: period, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "salesforce-wallet-usage":
+                let config = try SalesforceDigitalWalletUsage.configuration(from: key)
+                let snapshot = try await Task.detached {
+                    try SalesforceCLI.fetch(config: config, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "zendesk-ai-export-usage":
+                let config = try ZendeskAIExportUsage.configuration(from: key)
+                let day = ZendeskAIExportUsage.exportDay(now: now)
+                let body = try JSONSerialization.data(withJSONObject: ["date": day, "ttl": 10])
+                let linksData = try await postJSON(ZendeskAIExportUsage.endpoint(subdomain: config.subdomain),
+                                                   headers: ["authorization": config.token,
+                                                             "organizationId": config.organizationID,
+                                                             "botId": config.botID,
+                                                             "Content-Type": "application/json"],
+                                                   body: body, allowRedirects: false)
+                let links = try ZendeskAIExportUsage.signedURLs(linksData, day: day)
+                var files: [Data] = []
+                for link in links {
+                    files.append(try await get(link, headers: [:], allowRedirects: false))
+                }
+                return FetchResult(snapshot: try ZendeskAIExportUsage.parse(files, botID: config.botID,
+                                                                            day: day, fetchedAt: now), identity: nil)
+            case "composio-project-usage":
+                data = try await postJSON("https://backend.composio.dev/api/v3.1/project/usage/summary",
+                                          headers: ["x-api-key": key, "Content-Type": "application/json"],
+                                          body: ComposioProjectUsage.requestBody(now: now), allowRedirects: false)
+                return FetchResult(snapshot: try ComposioProjectUsage.parse(data, fetchedAt: now), identity: nil)
+            case "mistral-admin-spend-status":
+                data = try await get("https://api.mistral.ai/v1/admin/spend-limit",
+                                     headers: ["x-api-key": key], allowRedirects: false)
+                return FetchResult(snapshot: try MistralAdminSpendStatus.parse(data, fetchedAt: now), identity: nil)
+            case "microsoft365-copilot-report":
+                let config = try Microsoft365CopilotReport.configuration(from: key)
+                let token = try await Task.detached {
+                    try MicrosoftGraphCLI.accessToken(tenantID: config.tenantID)
+                }.value
+                data = try await get(Microsoft365CopilotReport.url,
+                                     headers: bearer(token), allowRedirects: false)
+                return FetchResult(snapshot: try Microsoft365CopilotReport.parse(data, principalName: config.principalName,
+                                                                                fetchedAt: now), identity: nil)
+            case "thoughtspot-spotter-usage":
+                let config = try ThoughtSpotSpotterUsage.configuration(from: key)
+                data = try await get(config.url, headers: bearer(config.token), allowRedirects: false)
+                return FetchResult(snapshot: try ThoughtSpotSpotterUsage.parse(data, fetchedAt: now), identity: nil)
+            case "kling-api-package-usage":
+                guard key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw FetchError.noKey }
+                data = try await get(KlingAPIPackageUsage.url(now: now),
+                                     headers: ["Authorization": "Bearer \(key)", "Content-Type": "application/json"],
+                                     allowRedirects: false)
+                return FetchResult(snapshot: try KlingAPIPackageUsage.parse(data, fetchedAt: now), identity: nil)
+            case "gemini-api-request-usage":
+                let project = try GeminiAPIRequestUsage.projectID(from: key)
+                let period = GeminiAPIRequestUsage.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.accessToken() }.value
+                let snapshot = try await GeminiAPIRequestUsage.fetch(projectID: project, period: period, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "vertex-token-monitoring":
+                let config = try VertexTokenMonitoring.configuration(from: key)
+                let period = VertexTokenMonitoring.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.accessToken() }.value
+                var next: String?, seen = Set<String>()
+                var input = 0.0, output = 0.0, count = 0
+                repeat {
+                    let pageData = try await get(VertexTokenMonitoring.url(config: config, period: period, pageToken: next),
+                                                 headers: bearer(token), allowRedirects: false)
+                    let page = try VertexTokenMonitoring.parsePage(pageData, config: config)
+                    input += page.input; output += page.output; count += page.seriesCount
+                    next = page.nextPageToken
+                    if let next {
+                        guard seen.insert(next).inserted, seen.count < 100 else {
+                            throw ParseError.unsupported("Vertex AIのメトリクス全ページを取得できません")
+                        }
+                    }
+                } while next != nil
+                guard count > 0 else { throw ParseError.unsupported("Vertex AIの指定モデル・地域に実績がありません") }
+                return FetchResult(snapshot: try VertexTokenMonitoring.snapshot(input: input, output: output,
+                                                                                period: period, fetchedAt: now), identity: nil)
+            case "workspace-gemini-audit":
+                let config = try WorkspaceGeminiUsage.configuration(from: key)
+                let period = WorkspaceGeminiUsage.period(now: now)
+                let token = try await Task.detached { try GoogleCloudCLI.workspaceAuditAccessToken() }.value
+                let snapshot = try await WorkspaceGeminiUsage.fetch(config: config, period: period, fetchedAt: now) { url in
+                    var headers = bearer(token)
+                    headers["X-Goog-User-Project"] = config.projectID
+                    return try await get(url, headers: headers, allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "magnific-team-credits":
+                let period = MagnificTeamCredits.period(now: now)
+                data = try await postJSON(MagnificTeamCredits.url,
+                                          headers: ["x-magnific-api-key": key, "Content-Type": "application/json"],
+                                          body: MagnificTeamCredits.requestBody(period: period), allowRedirects: false)
+                return FetchResult(snapshot: try MagnificTeamCredits.parse(data, period: period,
+                                                                          fetchedAt: now), identity: nil)
+            case "kiro-enterprise-usage":
+                let config = try KiroEnterpriseUsage.configuration(from: key)
+                let snapshot = try await Task.detached {
+                    try KiroAWSCLI.fetch(config: config, fetchedAt: now)
+                }.value
+                return FetchResult(snapshot: snapshot, identity: nil)
+            case "scenario-cu-usage":
+                let config = try ScenarioUsage.configuration(from: key)
+                data = try await get(ScenarioUsage.url(teamID: config.teamID),
+                                     headers: ["Authorization": config.authorization], allowRedirects: false)
+                return FetchResult(snapshot: try ScenarioUsage.parse(data, fetchedAt: now), identity: nil)
+            case "you-api-balance":
+                data = try await get("https://api.you.com/v1/billing/account_balance",
+                                     headers: ["X-API-Key": key], allowRedirects: false)
+                return FetchResult(snapshot: try YouAccountBalance.parse(data, fetchedAt: now), identity: nil)
+            case "fal-api-balance":
+                guard key.utf8.allSatisfy({ (33...126).contains($0) }) else { throw FetchError.noKey }
+                data = try await get("https://api.fal.ai/v1/account/billing?expand=credits",
+                                     headers: ["Authorization": "Key \(key)"], allowRedirects: false)
+                return FetchResult(snapshot: try FalBilling.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-113":
+                let config = try MakeUsage.configuration(from: key)
+                data = try await get(MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
+                                     headers: ["Authorization": "Token \(config.token)"])
+                return FetchResult(snapshot: try MakeUsage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-81":
+                data = try await get("https://elicit.com/api/v2/usage", headers: bearer(key))
+                return FetchResult(snapshot: try ElicitUsage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-71":
+                data = try await get("https://api.poe.com/usage/current_balance", headers: bearer(key))
+                return FetchResult(snapshot: try PoeBalance.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-121":
+                data = try await post("https://api.apollo.io/api/v1/usage_stats/credit_usage_stats",
+                                      headers: ["x-api-key": key, "Content-Type": "application/json", "Accept": "application/json"])
+                return FetchResult(snapshot: try ApolloCredits.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-103":
+                data = try await get("https://api.tavily.com/usage", headers: bearer(key))
+                return FetchResult(snapshot: try TavilyUsage.parse(data, fetchedAt: now), identity: nil)
+            case "sheet-29":
+                data = try await get("https://api.v0.dev/v1/user/plan", headers: bearer(key))
+                return FetchResult(snapshot: try V0Billing.parse(data, fetchedAt: now), identity: nil)
             case "copilot":
                 let userData = try await get("https://api.github.com/user", headers: githubHeaders(key))
                 let login = try GitHubUser.login(userData)
@@ -157,16 +456,84 @@ enum Fetchers {
                              "X-GitHub-Api-Version": CopilotCredits.apiVersion]) { $1 }
     }
 
+    private static func getUsagePage(_ url: String, headers: [String: String]) async throws -> (data: Data, link: String?) {
+        var req = URLRequest(url: URL(string: url)!, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        cfg.urlCache = nil
+        let session = URLSession(configuration: cfg)
+        defer { session.finishTasksAndInvalidate() }
+        do {
+            let (data, response) = try await session.data(for: req, delegate: BlockRedirects())
+            guard let response = response as? HTTPURLResponse else { throw FetchError.network }
+            guard (200..<300).contains(response.statusCode) else { throw FetchError.http(response.statusCode) }
+            return (data, response.value(forHTTPHeaderField: "Link"))
+        } catch let error as FetchError { throw error }
+        catch { throw FetchError.network }
+    }
+
     private static func bearer(_ key: String) -> [String: String] { ["Authorization": "Bearer \(key)"] }
 
-    private static func get(_ url: String, headers: [String: String]) async throws -> Data {
+    private static func postJSON(_ url: String, headers: [String: String], body: Data, allowRedirects: Bool = true) async throws -> Data {
+        var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        req.httpBody = body
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        do {
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req, delegate: allowRedirects ? nil : BlockRedirects())
+            let code = (res as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else { throw FetchError.http(code) }
+            return data
+        } catch let e as FetchError {
+            throw e
+        } catch {
+            throw FetchError.network
+        }
+    }
+
+    private static func post(_ url: String, headers: [String: String]) async throws -> Data {
+        var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
+        req.httpMethod = "POST"
+        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.httpShouldSetCookies = false
+        do {
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let code = (res as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else { throw FetchError.http(code) }
+            return data
+        } catch let e as FetchError {
+            throw e
+        } catch {
+            throw FetchError.network
+        }
+    }
+
+    private final class BlockRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
+    private static func get(_ url: String, headers: [String: String], allowRedirects: Bool = true, loopbackOnly: Bool = false) async throws -> Data {
         var req = URLRequest(url: URL(string: url)!, timeoutInterval: 15)
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
         // Cookie・キャッシュは使わない。
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
+        if loopbackOnly {
+            guard req.url?.host == "127.0.0.1", req.url?.scheme == "http", !allowRedirects else { throw FetchError.network }
+            cfg.connectionProxyDictionary = [:]
+            cfg.urlCache = nil
+            cfg.urlCredentialStorage = nil
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+        }
         do {
-            let (data, res) = try await URLSession(configuration: cfg).data(for: req)
+            let (data, res) = try await URLSession(configuration: cfg).data(for: req, delegate: allowRedirects ? nil : BlockRedirects())
             let code = (res as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(code) else { throw FetchError.http(code) }
             return data
@@ -327,3 +694,4 @@ enum ClaudeCLI {
         return r
     }
 }
+

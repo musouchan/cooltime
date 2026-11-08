@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import CooltimeCore
 
 struct ManageView: View {
@@ -126,6 +127,13 @@ private struct DetailView: View {
     let item: Item
     @State private var draft: Account
     @State private var apiKey = ""
+    @State private var manualAmount = ""
+    @State private var manualUnit = "credits"
+    @State private var manualSource = "公式ダッシュボードを確認"
+    @State private var manualObservedAt = Date()
+    @State private var manualResetAt = ""
+    @State private var manualMessage: String?
+    @State private var showCSVImporter = false
     @State private var showAdvanced = false
     @FocusState private var nameFocused: Bool
 
@@ -144,8 +152,10 @@ private struct DetailView: View {
                 header
                 usageCard
                 if item.service.method == .apiKey { keyCard }
+                if item.service.method == .manual { manualCard }
                 if !planOptions.isEmpty { planCard }
-                if item.service.method == .statuslineFile { StatuslineSetupView().card() }
+                if item.service.id == "claude" { StatuslineSetupView().card() }
+                if item.service.id == "sheet-11" { AntigravityStatuslineSetupView().card() }
                 advanced
             }
             .padding(24)
@@ -202,7 +212,10 @@ private struct DetailView: View {
             if item.fetchError != nil {
                 Text("\(formatClock(at, now: model.now)) 時点（更新に失敗）").font(.caption).foregroundStyle(.orange)
             } else {
-                Text("\(formatClock(at, now: model.now)) に取得").font(.caption).foregroundStyle(.secondary)
+                Text(item.service.method == .manual
+                     ? "\(formatClock(at, now: model.now)) に確認（手動記録）"
+                     : "\(formatClock(at, now: model.now)) に取得")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
     }
@@ -228,14 +241,107 @@ private struct DetailView: View {
                         Text(formatMoney(c)).font(.title3).fontWeight(.semibold).monospacedDigit()
                     }
                 }
+                if let reset = snap.credit?.resetsAt, item.service.method == .manual {
+                    Text("利用者が記録した更新日時: \(formatClock(reset, now: model.now))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if let note = snap.credit?.note, item.service.method == .manual {
+                    Text(note).font(.caption).foregroundStyle(.secondary)
+                    Text("手動で確認した過去の記録です。現在の残量は保証されません。")
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 if snap.windows.isEmpty && snap.credit == nil {
                     Text("取得できる利用枠がありません").foregroundStyle(.secondary)
                 }
             } else {
-                Text("まだ取得していません。「すべて更新」で取得できます。").foregroundStyle(.secondary)
+                Text(item.service.method == .manual
+                     ? "記録がありません。下の手動入力またはCSV取り込みを使用してください。"
+                     : "まだ取得していません。「すべて更新」で取得できます。")
+                    .foregroundStyle(.secondary)
             }
         }
         .card()
+    }
+
+    // MARK: 手動観測値（ライブAPIには偽装しない）
+
+    private var manualCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("残量を手動で記録").font(.headline)
+            Text("APIからの自動取得には未対応です。公式画面で確認した数値と日時だけを登録してください。")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                TextField("残量（例: 120）", text: $manualAmount)
+                    .textFieldStyle(.roundedBorder)
+                TextField("単位（例: credits, USD, requests）", text: $manualUnit)
+                    .textFieldStyle(.roundedBorder)
+            }
+            DatePicker("実際に確認した日時", selection: $manualObservedAt, in: ...Date(),
+                       displayedComponents: [.date, .hourAndMinute])
+            TextField("情報源（例: 公式ダッシュボード）", text: $manualSource)
+                .textFieldStyle(.roundedBorder)
+            TextField("明示された更新日時（任意、例: 2026-12-01T00:00:00Z）", text: $manualResetAt)
+                .textFieldStyle(.roundedBorder)
+            Text("更新日時が表示されていない場合は空欄のままにしてください。推定日時は登録しません。")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("記録を保存") { saveManual() }
+                    .disabled(manualAmount.isEmpty || manualSource.isEmpty)
+                Button("CSVを取り込む…") { showCSVImporter = true }
+                Spacer()
+            }
+            if let manualMessage {
+                Text(manualMessage).font(.caption).foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Text("CSV列: remaining,unit,observed_at,reset_at,source（日時はタイムゾーン付きISO 8601）。複数行を取り込めます。")
+                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+        .card()
+        .fileImporter(isPresented: $showCSVImporter, allowedContentTypes: [.commaSeparatedText, .plainText]) { selection in
+            do {
+                let url = try selection.get()
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                let fileSize = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard fileSize <= 1_048_576 else {
+                    throw ManualImportError.invalid("CSVは1MB以下にしてください")
+                }
+                let csv = try String(contentsOf: url, encoding: .utf8)
+                let records = try ManualImport.parseCSV(csv)
+                try model.importManual(item.account, observations: records)
+                manualMessage = "\(records.count)件の手動記録を保存しました（最新の確認日時を表示）"
+            } catch {
+                manualMessage = "CSV取り込み失敗: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func saveManual() {
+        do {
+            guard let remaining = Double(manualAmount.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                throw ManualImportError.invalid("残量を数値で入力してください")
+            }
+            let trimmedReset = manualResetAt.trimmingCharacters(in: .whitespacesAndNewlines)
+            var reset: Date?
+            if !trimmedReset.isEmpty {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime]
+                let fractional = ISO8601DateFormatter()
+                fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                guard let parsed = fractional.date(from: trimmedReset) ?? formatter.date(from: trimmedReset) else {
+                    throw ManualImportError.invalid("更新日時はタイムゾーン付きISO 8601で入力してください")
+                }
+                reset = parsed
+            }
+            let observation = try ManualObservation(remaining: remaining, unit: manualUnit,
+                                                     observedAt: manualObservedAt, resetsAt: reset,
+                                                     source: manualSource)
+            try model.importManual(item.account, observations: [observation])
+            manualMessage = "確認済みの手動記録を保存しました"
+        } catch {
+            manualMessage = error.localizedDescription
+        }
     }
 
     // MARK: APIキー
@@ -390,5 +496,25 @@ private struct StatuslineSetupView: View {
     private func run(_ work: () throws -> Void) {
         do { try work(); message = nil } catch { message = error.localizedDescription }
         isSet = StatuslineSetup.isSet()
+    }
+}
+
+
+private struct AntigravityStatuslineSetupView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Antigravity CLI から自動取得").font(.headline)
+            Text("公式 statusLine コマンドを設定すると、モデル別クォータのJSONだけをこのMacに保存します。会話本文・プロジェクトパス・メールアドレス・認証情報は保存しません。")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("セットアップ手順を開く") {
+                    if let url = URL(string: "https://github.com/musouchan/cooltime/blob/main/docs/ANTIGRAVITY_STATUSLINE.md") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Text("CLIが起動中に statusLine の状態変化ごとに更新されます。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }

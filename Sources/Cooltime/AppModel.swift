@@ -23,6 +23,8 @@ private struct Stored: Codable {
     var snapshots: [String: Snapshot]
     /// 自分で削除したサービス。自動検出で勝手に戻さない。
     var dismissed: [String]?
+    /// 手動記録はAPI取得結果とは分けて、確認日時と情報源を保管する。
+    var manualObservations: [String: [ManualObservation]]?
 }
 
 @MainActor
@@ -30,6 +32,7 @@ final class AppModel: ObservableObject {
     @Published var accounts: [Account] = []
     @Published private var snapshots: [UUID: Snapshot] = [:]
     @Published var errors: [UUID: String] = [:]
+    @Published private(set) var manualObservations: [UUID: [ManualObservation]] = [:]
     @Published var refreshing: Set<UUID> = []
     @Published private(set) var now: Date
     /// 管理画面で選ばれているアカウント。
@@ -185,8 +188,10 @@ final class AppModel: ObservableObject {
         subscriptions.filter { $0.state == .available || $0.state == .unset }
     }
     var credits: [Item] {
-        items.filter { $0.service.kind == .credit || $0.snapshot?.credit != nil }
+        items.filter { $0.service.method != .manual && ($0.service.kind == .credit || $0.snapshot?.credit != nil) }
     }
+
+    var manualCredits: [Item] { items.filter { $0.service.method == .manual } }
 
     func untilDate(_ i: Item) -> Date {
         if case .limited(let d) = i.state { return d }
@@ -195,7 +200,7 @@ final class AppModel: ObservableObject {
 
     /// メニューバーに出すもの（キャラクターと、一番大事な1つの数字）。
     var menuBarDisplay: MenuBarDisplay {
-        makeMenuBarDisplay(items.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil, source: $0.service.id) })
+        makeMenuBarDisplay(items.filter { $0.service.method != .manual }.map { MenuBarCandidate(state: $0.state, snapshot: $0.snapshot, fetchFailed: $0.fetchError != nil, source: $0.service.id) })
     }
 
     /// メニューバーにマウスを乗せたときの説明。
@@ -218,8 +223,15 @@ final class AppModel: ObservableObject {
     func reloadFiles() {
         for a in accounts where Catalog.service(a.serviceID)?.method == .statuslineFile {
             // /usage とステータスラインの、新しい方を使う。
-            if let s = try? Fetchers.readClaude(slot: a.slot),
-               s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
+            let local: Snapshot?
+            if a.serviceID == "sheet-11" {
+                local = try? Fetchers.readAntigravity()
+            } else if a.serviceID == "jetbrains-ai-local-quota" {
+                local = try? JetBrainsQuotaFiles.read()
+            } else {
+                local = try? Fetchers.readClaude(slot: a.slot)
+            }
+            if let s = local, s.fetchedAt > (snapshots[a.id]?.fetchedAt ?? .distantPast) {
                 snapshots[a.id] = s
                 record(a, s)
                 errors[a.id] = nil
@@ -230,7 +242,8 @@ final class AppModel: ObservableObject {
 
     /// 通信を伴う取得。更新ボタンを押したときだけ呼ぶ。
     func refresh(_ account: Account) async {
-        guard let service = Catalog.service(account.serviceID), !refreshing.contains(account.id) else { return }
+        guard let service = Catalog.service(account.serviceID), service.method != .manual,
+              !refreshing.contains(account.id) else { return }
         lastAuto[account.id] = clock.now
         refreshing.insert(account.id)
         defer { refreshing.remove(account.id) }
@@ -306,7 +319,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAll() async {
-        for a in accounts { await refresh(a) }
+        for a in accounts where Catalog.service(a.serviceID)?.method != .manual { await refresh(a) }
     }
 
     // MARK: 自動検出
@@ -361,6 +374,28 @@ final class AppModel: ObservableObject {
         save()
     }
 
+    /// 画面またはCSVから確認した記録のみ。自動APIのデータとして扱わない。
+    func importManual(_ account: Account, observations: [ManualObservation]) throws {
+        guard Catalog.service(account.serviceID)?.method == .manual,
+              accounts.contains(where: { $0.id == account.id }) else {
+            throw ManualImportError.invalid("手動記録対象ではありません")
+        }
+        guard !observations.isEmpty else { throw ManualImportError.invalid("記録がありません") }
+        // 同時刻の手動修正は新しい入力を採用する。
+        var saved = manualObservations[account.id] ?? []
+        for observation in observations {
+            saved.removeAll { $0.observedAt == observation.observedAt }
+            saved.append(observation)
+        }
+        saved.sort { $0.observedAt > $1.observedAt }
+        manualObservations[account.id] = Array(saved.prefix(500))
+        if let latest = manualObservations[account.id]?.first {
+            snapshots[account.id] = latest.snapshot
+        }
+        errors[account.id] = nil
+        save()
+    }
+
     func remove(_ a: Account) {
         Keychain.delete(a.id)
         history.forget(account: a.id)
@@ -368,6 +403,7 @@ final class AppModel: ObservableObject {
         accounts.removeAll { $0.id == a.id }
         dismissed.insert(a.serviceID)
         snapshots[a.id] = nil
+        manualObservations[a.id] = nil
         errors[a.id] = nil
         save()
     }
@@ -384,11 +420,18 @@ final class AppModel: ObservableObject {
         accounts = stored.accounts
         dismissed = Set(stored.dismissed ?? [])
         snapshots = Dictionary(uniqueKeysWithValues: stored.snapshots.compactMap { k, v in UUID(uuidString: k).map { ($0, v) } })
+        manualObservations = Dictionary(uniqueKeysWithValues: (stored.manualObservations ?? [:]).compactMap { k, v in
+            UUID(uuidString: k).map { ($0, v.sorted { $0.observedAt > $1.observedAt }) }
+        })
+        for (id, history) in manualObservations {
+            if let latest = history.first { snapshots[id] = latest.snapshot }
+        }
     }
 
     private func save() {
         let stored = Stored(accounts: accounts, snapshots: Dictionary(uniqueKeysWithValues: snapshots.map { ($0.key.uuidString, $0.value) }),
-                        dismissed: Array(dismissed))
+                        dismissed: Array(dismissed),
+                            manualObservations: Dictionary(uniqueKeysWithValues: manualObservations.map { ($0.key.uuidString, $0.value) }))
         if let data = try? JSONEncoder.cooltime.encode(stored) { try? data.write(to: Paths.state, options: .atomic) }
     }
 }

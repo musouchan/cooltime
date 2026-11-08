@@ -46,6 +46,9 @@ struct WindowBarRow: View {
         } else if let p = window.remainingPercent {
             parts.append("残り\(Int(p.rounded()))%")
         }
+        if let amount = window.reportedAmount, let unit = window.reportedUnit {
+            parts.append("実績 \(formatMoney(CreditBalance(amount: amount, currency: unit)))")
+        }
         if let reset = window.resetsAt {
             parts.append((ResetTimeStyle(rawValue: timeStyle) ?? .absolute).text(for: reset, now: now))
         }

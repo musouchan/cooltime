@@ -24,7 +24,6 @@ final class FormattingTests: XCTestCase {
         XCTAssertTrue(formatClock(later.addingTimeInterval(86400), now: d, timeZone: tokyo).contains("/"))
     }
 }
-
 final class EvaluationTests: XCTestCase {
     let clock = FixedClock(Date(timeIntervalSince1970: 1_800_000_000))
 
@@ -98,7 +97,7 @@ final class ParserTests: XCTestCase {
     }
 
     func testClaudeStatuslineWithoutLimitsIsRejected() {
-        XCTAssertThrowsError(try ClaudeStatusline.parse(d("{\"model\":{}}"), fetchedAt: at))
+        XCTAssertThrowsError(try ClaudeStatusline.parse(d(#"{"model":{}}"#), fetchedAt: at))
     }
 
     func testCodex() throws {
@@ -127,14 +126,14 @@ final class ParserTests: XCTestCase {
     }
 
     func testVercelAndDeepSeek() throws {
-        XCTAssertEqual(try VercelAIGateway.parse(d("{\"balance\":\"95.50\",\"total_used\":\"4\"}"), fetchedAt: at).credit?.amount, 95.5)
-        let ds = try DeepSeek.parse(d("{\"balance_infos\":[{\"currency\":\"USD\",\"total_balance\":\"12.00\"}]}"), fetchedAt: at)
+        XCTAssertEqual(try VercelAIGateway.parse(d(#"{"balance":"95.50","total_used":"4"}"#), fetchedAt: at).credit?.amount, 95.5)
+        let ds = try DeepSeek.parse(d(#"{"balance_infos":[{"currency":"USD","total_balance":"12.00"}]}"#), fetchedAt: at)
         XCTAssertEqual(formatMoney(ds.credit!), "$12.00")
     }
 
     func testOpenRouterRequiresLimit() throws {
-        XCTAssertThrowsError(try OpenRouter.parse(d("{\"data\":{\"limit\":null,\"limit_remaining\":null}}"), fetchedAt: at))
-        let s = try OpenRouter.parse(d("{\"data\":{\"limit\":20,\"limit_remaining\":18.4,\"limit_reset\":\"monthly\"}}"), fetchedAt: at)
+        XCTAssertThrowsError(try OpenRouter.parse(d(#"{"data":{"limit":null,"limit_remaining":null}}"#), fetchedAt: at))
+        let s = try OpenRouter.parse(d(#"{"data":{"limit":20,"limit_remaining":18.4,"limit_reset":"monthly"}}"#), fetchedAt: at)
         XCTAssertEqual(s.credit?.amount, 18.4)
         XCTAssertNotNil(s.credit?.resetsAt)
     }
@@ -156,15 +155,15 @@ final class IdentityTests: XCTestCase {
         {"oauthAccount":{"emailAddress":"me@example.com","organizationName":"Me"},"projects":{}}
         """))
         XCTAssertEqual(id, AccountIdentity(email: "me@example.com"))
-        XCTAssertNil(ClaudeAccount.parse(d("{\"projects\":{}}")))
+        XCTAssertNil(ClaudeAccount.parse(d(#"{"projects":{}}"#)))
     }
 
     func testCodexAccountMapsPlanToType() {
-        let plus = CodexAccount.parse(d("{\"id\":3,\"result\":{\"account\":{\"type\":\"chatgpt\",\"email\":\"a@b.c\",\"planType\":\"plus\"}}}"))
+        let plus = CodexAccount.parse(d(#"{"id":3,"result":{"account":{"type":"chatgpt","email":"a@b.c","planType":"plus"}}}"#))
         XCTAssertEqual(plus, AccountIdentity(email: "a@b.c", plan: "Plus", type: .personal))
-        let team = CodexAccount.parse(d("{\"result\":{\"account\":{\"planType\":\"team\"}}}"))
+        let team = CodexAccount.parse(d(#"{"result":{"account":{"planType":"team"}}}"#))
         XCTAssertEqual(team?.type, .business)
-        XCTAssertNil(CodexAccount.parse(d("{\"error\":{\"message\":\"x\"}}")))
+        XCTAssertNil(CodexAccount.parse(d(#"{"error":{"message":"x"}}"#)))
     }
 }
 
@@ -181,7 +180,7 @@ final class StatuslineConfigTests: XCTestCase {
     }
 
     func testKeepsOtherSettingsAndWrapsExistingStatusline() throws {
-        let existing = d("{\"theme\":\"dark\",\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\",\"padding\":2}}")
+        let existing = d(#"{"theme":"dark","statusLine":{"type":"command","command":"echo it's me","padding":2}}"#)
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let root = obj(c.newData)
         XCTAssertEqual(root["theme"] as? String, "dark")
@@ -199,12 +198,12 @@ final class StatuslineConfigTests: XCTestCase {
     }
 
     func testRevertRestoresOriginal() throws {
-        let existing = d("{\"statusLine\":{\"type\":\"command\",\"command\":\"echo it's me\"}}")
+        let existing = d(#"{"statusLine":{"type":"command","command":"echo it's me"}}"#)
         let c = try StatuslineConfig.plan(existing: existing, scriptPath: script)
         let back = try StatuslineConfig.revert(existing: c.newData, scriptPath: script)!
         XCTAssertEqual((obj(back)["statusLine"] as! [String: Any])["command"] as? String, "echo it's me")
 
-        let fresh = try StatuslineConfig.plan(existing: d("{\"a\":1}"), scriptPath: script)
+        let fresh = try StatuslineConfig.plan(existing: d(#"{"a":1}"#), scriptPath: script)
         let none = try StatuslineConfig.revert(existing: fresh.newData, scriptPath: script)!
         XCTAssertNil(obj(none)["statusLine"])
         XCTAssertEqual(obj(none)["a"] as? Int, 1)
@@ -212,8 +211,8 @@ final class StatuslineConfigTests: XCTestCase {
 
     func testRefusesToTouchUnreadableOrUnknownShapes() {
         XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("not json"), scriptPath: script))
-        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d("{\"statusLine\":\"x\"}"), scriptPath: script))
-        XCTAssertNil(try StatuslineConfig.revert(existing: d("{\"statusLine\":{\"type\":\"command\",\"command\":\"mine\"}}"), scriptPath: script))
+        XCTAssertThrowsError(try StatuslineConfig.plan(existing: d(#"{"statusLine":"x"}"#), scriptPath: script))
+        XCTAssertNil(try StatuslineConfig.revert(existing: d(#"{"statusLine":{"type":"command","command":"mine"}}"#), scriptPath: script))
     }
 }
 
@@ -808,11 +807,11 @@ final class MoreAPIParserTests: XCTestCase {
     }
 
     func testNewServicesAreInTheCatalogInSheetOrder() {
-        let ids = Catalog.all.map(\.id)
+        let ids = Catalog.automatic.map(\.id)
         XCTAssertEqual(Array(ids.suffix(11)), ["runway", "luma", "stability", "apify", "serpapi", "deepl", "photoroom", "meshy",
                                                "copilot", "synthesia", "tripo"])
         XCTAssertEqual(Set(ids).count, ids.count)  // IDは重ならない
-        XCTAssertTrue(Catalog.all.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
+        XCTAssertTrue(Catalog.automatic.suffix(11).allSatisfy { $0.method == .apiKey && $0.apiKeyHelp != nil })
     }
 }
 
@@ -861,6 +860,414 @@ final class DocumentedAPITests: XCTestCase {
         XCTAssertEqual(c?.note, "処理中で確保されている分 200")
         XCTAssertNil(try Tripo.parse(d(#"{"data":{"balance": 5, "frozen": 0}}"#), fetchedAt: at).credit?.note)
         XCTAssertThrowsError(try Tripo.parse(d("{}"), fetchedAt: at))
+    }
+}
+
+final class ManualImportTests: XCTestCase {
+    let observed = Date(timeIntervalSince1970: 1_793_880_000)
+    var later: Date { observed.addingTimeInterval(60) }
+
+    func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
+        XCTAssertEqual(ManualCatalog.all.count, 151)
+        // Spark is delivered on PR #13 and can be added independently of this stack.
+        let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
+        // The automated option is separate from the existing manual service.
+        XCTAssertEqual(Catalog.all.count + pendingSpark, 217)
+        XCTAssertEqual(Catalog.service("sheet-97")?.method, .manual)
+        XCTAssertEqual(Catalog.service("fal-api-balance")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-183")?.method, .manual)
+        XCTAssertEqual(Catalog.service("datadog-bits-usage")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-116")?.method, .manual)
+        XCTAssertEqual(Catalog.service("langsmith-trace-usage")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-106")?.method, .manual)
+        XCTAssertEqual(Catalog.service("browserbase-usage")?.method, .apiKey)
+        XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
+        XCTAssertEqual(Catalog.service("sheet-11")?.name, "Google Antigravity")
+        XCTAssertEqual(Catalog.service("sheet-20")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-20")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-20" })
+        XCTAssertEqual(Catalog.service("sheet-86")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-86")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-86" })
+        XCTAssertEqual(Catalog.service("sheet-87")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-87")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-87" })
+        XCTAssertEqual(Catalog.service("sheet-90")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-90")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-90" })
+        XCTAssertEqual(Catalog.service("sheet-93")?.method, .apiKey)
+        XCTAssertEqual(Catalog.service("sheet-93")?.kind, .subscription)
+        XCTAssertFalse(ManualCatalog.all.contains { $0.id == "sheet-93" })
+        XCTAssertEqual(Catalog.service("sheet-11")?.method, .statuslineFile)
+        XCTAssertEqual(Catalog.service("sheet-187")?.name, "Kindroid")
+        XCTAssertTrue(ManualCatalog.all.allSatisfy { $0.method == .manual && $0.apiKeyHelp == nil })
+    }
+
+    func testManualObservationNeverInventsResetAndIsTimestamped() throws {
+        let record = try ManualObservation(remaining: 0, unit: "credits", observedAt: observed,
+                                           source: "公式のUsage画面", now: later)
+        XCTAssertNil(record.resetsAt)
+        XCTAssertEqual(record.snapshot.credit?.amount, 0)
+        XCTAssertNil(record.snapshot.credit?.resetsAt)
+        XCTAssertEqual(record.snapshot.fetchedAt, observed)
+        XCTAssertTrue(record.snapshot.credit?.note?.contains("手動記録") == true)
+    }
+
+    func testManualValidationRejectsInvalidAndFutureData() {
+        XCTAssertThrowsError(try ManualObservation(remaining: -1, unit: "credits", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: .infinity, unit: "credits", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "", observedAt: observed,
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD", observedAt: observed,
+                                                    source: "", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD",
+                                                    observedAt: later.addingTimeInterval(601),
+                                                    source: "公式", now: later))
+        XCTAssertThrowsError(try ManualObservation(remaining: 1, unit: "USD", observedAt: observed,
+                                                    resetsAt: observed.addingTimeInterval(-1),
+                                                    source: "公式", now: later))
+    }
+
+    func testCSVImportParsesEscapedSourceAndMultipleRows() throws {
+        let csv = #"""
+        remaining,unit,observed_at,reset_at,source
+        12,credits,2026-11-05T12:00:00Z,,"公式, Billing"
+        0,requests,2026-11-05T12:01:00Z,2026-11-06T00:00:00Z,"Usage ""Quota"""
+        """#
+        let records = try ManualImport.parseCSV(csv, now: later.addingTimeInterval(300))
+        XCTAssertEqual(records.count, 2)
+        XCTAssertEqual(records[0].source, "公式, Billing")
+        XCTAssertNil(records[0].resetsAt)
+        XCTAssertEqual(records[1].remaining, 0)
+        XCTAssertEqual(records[1].source, #"Usage "Quota""#)
+        XCTAssertNotNil(records[1].resetsAt)
+    }
+
+    func testCSVRejectsMissingFieldsAndMalformedRows() {
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,source\n1,USD,usage", now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n-5,USD,2026-11-05T12:00:00Z,official",
+                                                      now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("remaining,unit,observed_at,source\n1,USD,not-a-date,official",
+                                                      now: later))
+        XCTAssertThrowsError(try ManualImport.parseCSV("""
+        remaining,unit,observed_at,source
+        1,USD,2026-11-05T12:00:00Z,"bad,
+        """, now: later))
+    }
+}
+
+
+final class AntigravityStatuslineTests: XCTestCase {
+    private let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    private func data(_ text: String) -> Data { Data(text.utf8) }
+
+    func testParsesOfficialQuotaStatuslineAndKeepsResetTime() throws {
+        let json = #"{"gemini-weekly":{"remaining_fraction":0.9378,"reset_time":"2026-07-06T07:50:32Z","reset_in_seconds":560580},"claude-daily":{"remaining_amount":12,"reset_time":"2026-07-06T08:00:00Z"}}"#
+        let snapshot = try AntigravityStatusline.parse(data(json), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.windows.count, 2)
+        let weekly = try XCTUnwrap(snapshot.windows.first { $0.label == "gemini-weekly" })
+        XCTAssertEqual(weekly.usedPercent ?? -1, 6.22, accuracy: 0.001)
+        XCTAssertEqual(weekly.remainingPercent ?? -1, 93.78, accuracy: 0.001)
+        XCTAssertEqual(weekly.resetsAt, Date(timeIntervalSince1970: 1_783_324_232))
+        let daily = try XCTUnwrap(snapshot.windows.first { $0.label == "claude-daily" })
+        XCTAssertNil(daily.usedPercent)
+        XCTAssertEqual(daily.remainingCount, 12)
+        XCTAssertNil(snapshot.credit)
+        XCTAssertEqual(snapshot.fetchedAt, fetchedAt)
+    }
+
+    func testParsesWrappedQuotaAndSkipsDisabledBuckets() throws {
+        let wrapped = #"{"quota":{"disabled-model":{"disabled":true},"weekly":{"remaining_fraction":0.5}}}"#
+        let snapshot = try AntigravityStatusline.parse(data(wrapped), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].usedPercent ?? -1, 50, accuracy: 0.001)
+        XCTAssertNil(snapshot.windows[0].resetsAt)
+    }
+
+    func testRejectsMissingMalformedAndInvalidQuotaValues() {
+        for json in [
+            "{}",
+            #"{"quota":{}}"#,
+            #"{"quota":{"weekly":{"remaining_fraction":1.1}}}"#,
+            #"{"weekly":{"remaining_fraction":-0.1}}"#,
+            #"{"weekly":{"remaining_fraction":0.5,"reset_time":"later"}}"#,
+            #"{"weekly":{"remaining_fraction":"unknown"}}"#,
+            #"{"weekly":{"disabled":true}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try AntigravityStatusline.parse(data(json), fetchedAt: fetchedAt), "Should reject: \(json)")
+        }
+    }
+}
+
+
+final class V0BillingTests: XCTestCase {
+    private let fetchedAt = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testParsesRemainingCreditsAndBillingCycleEnd() throws {
+        let json = #"{"object":"plan","plan":"plus","billingCycle":{"start":1717430400,"end":1720108800},"balance":{"remaining":12000,"total":20000}}"#
+        let snapshot = try V0Billing.parse(Data(json.utf8), fetchedAt: fetchedAt)
+        XCTAssertEqual(snapshot.credit?.amount, 12000)
+        XCTAssertEqual(snapshot.credit?.currency, "credits")
+        XCTAssertEqual(snapshot.credit?.resetsAt, Date(timeIntervalSince1970: 1_720_108_800))
+        XCTAssertEqual(snapshot.credit?.note, "v0 plus")
+        XCTAssertEqual(snapshot.fetchedAt, fetchedAt)
+        XCTAssertTrue(snapshot.windows.isEmpty)
+    }
+
+    func testRejectsMissingMalformedAndNegativeBalance() {
+        for json in [
+            "{}",
+            #"{"balance":{}}"#,
+            #"{"balance":{"remaining":-1}}"#,
+            #"{"balance":{"remaining":"unknown"}}"#,
+            #"{"billingCycle":{"end":"later"},"balance":{"remaining":1}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try V0Billing.parse(Data(json.utf8), fetchedAt: fetchedAt))
+        }
+    }
+}
+
+
+final class TavilyUsageTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+    func testParsesOfficialKeyPlanAndPaygoUsage() throws {
+        let json = #"{"key":{"usage":150,"limit":1000},"account":{"plan_usage":500,"plan_limit":15000,"paygo_usage":25,"paygo_limit":100}}"#
+        let snapshot = try TavilyUsage.parse(d(json), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 3)
+        XCTAssertEqual(snapshot.windows[0].remainingCount, 850)
+        XCTAssertEqual(snapshot.windows[1].usedPercent ?? 0, 100.0 / 30.0, accuracy: 0.001)
+        XCTAssertEqual(snapshot.windows[2].remainingCount, 75)
+    }
+    func testRejectsResponseWithoutUsageLimits() {
+        XCTAssertThrowsError(try TavilyUsage.parse(d(#"{"key":{"usage":3,"limit":null},"account":{}}"#), fetchedAt: at))
+        XCTAssertThrowsError(try TavilyUsage.parse(d("not json"), fetchedAt: at))
+    }
+}
+
+
+
+final class ApolloCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialCreditPoolsAndCycleEnd() throws {
+        let fixture = #"{"credit_usage_stats":{"lead_credit":{"limit":10000,"consumed":2500,"left_over":7500},"ai_credit":{"limit":2000,"consumed":75,"left_over":1925},"dialer":{"limit":500,"consumed":12,"left_over":488},"excluded":{"limit":0,"consumed":0,"left_over":0}},"current_credit_cycle":{"start_date":"2026-04-01T00:00:00.000Z","end_date":"2026-05-01T00:00:00.000Z"}}"#
+        let snapshot = try ApolloCredits.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 3)
+        let lead = try XCTUnwrap(snapshot.windows.first { $0.label == "リードクレジット" })
+        XCTAssertEqual(lead.remainingCount, 7500)
+        XCTAssertEqual(lead.usedPercent, 25)
+        XCTAssertEqual(lead.resetsAt, Date(timeIntervalSince1970: 1_777_593_600))
+        XCTAssertEqual(snapshot.windows.first { $0.label.contains("分") }?.remainingCount, 488)
+    }
+
+    func testRejectsMissingMalformedAndNegativeCreditFields() {
+        for fixture in [
+            "{}",
+            #"{"credit_usage_stats":{"lead_credit":{"limit":5,"consumed":2}},"current_credit_cycle":{}}"#,
+            #"{"credit_usage_stats":{"lead_credit":{"limit":5,"consumed":-2,"left_over":7}},"current_credit_cycle":{}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try ApolloCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class PoeBalanceTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialCurrentPointBalance() throws {
+        let snapshot = try PoeBalance.parse(d(#"{"current_point_balance":1500}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 1500)
+        XCTAssertEqual(snapshot.credit?.currency, "points")
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testRejectsMissingMalformedNegativeAndFractionalBalance() {
+        for fixture in ["{}", #"{"current_point_balance":-1}"#, #"{"current_point_balance":1.5}"#, "not json"] {
+            XCTAssertThrowsError(try PoeBalance.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class ElicitUsageTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesPlanUsageAndCappedExtraUsage() throws {
+        let fixture = #"{"hasUsageRemaining":true,"percentUsed":42.5,"periodStart":"2026-11-01T00:00:00Z","periodEnd":"2026-12-01T00:00:00Z","extraUsage":{"limitUsdCents":500,"spentUsdCents":125}}"#
+        let snapshot = try ElicitUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 42.5)
+        XCTAssertEqual(snapshot.windows.first?.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
+        XCTAssertEqual(snapshot.credit?.amount, 3.75)
+        XCTAssertEqual(snapshot.credit?.currency, "USD")
+    }
+
+    func testParsesUncappedExtraUsageWithoutInventingRemainingBalance() throws {
+        let fixture = #"{"hasUsageRemaining":false,"percentUsed":100,"periodStart":"","periodEnd":"","extraUsage":{"limitUsdCents":null,"spentUsdCents":250}}"#
+        let snapshot = try ElicitUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.usedPercent, 100)
+        XCTAssertNil(snapshot.credit)
+    }
+
+    func testRejectsMissingMalformedAndInvalidUsage() {
+        for fixture in [
+            "{}",
+            #"{"hasUsageRemaining":true,"percentUsed":101,"periodEnd":"","extraUsage":null}"#,
+            #"{"hasUsageRemaining":true,"percentUsed":4,"periodEnd":"","extraUsage":{"limitUsdCents":20}}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try ElicitUsage.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class HeadshotProCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOrganizationCreditBalance() throws {
+        let snapshot = try HeadshotProCredits.parse(d(#"{"success":true,"credits":100}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 100)
+        XCTAssertEqual(snapshot.credit?.currency, "credits")
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testRejectsMissingMalformedErrorAndInvalidCredits() {
+        for fixture in [
+            "{}",
+            #"{"success":false,"credits":100}"#,
+            #"{"success":true}"#,
+            #"{"success":true,"credits":-1}"#,
+            #"{"success":true,"credits":1.5}"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try HeadshotProCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class ExaCreditsTests: XCTestCase {
+    let at = Date(timeIntervalSince1970: 1_800_000_000)
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    func testParsesOfficialTeamCreditBalance() throws {
+        let snapshot = try ExaCredits.parse(d(#"{"credits_usd":412.37,"expiring_credits":[{"amount_usd":20,"expires_at":"2026-12-01T00:00:00Z"}],"metadata":{"generated_at":"2026-11-04T19:00:00Z"}}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 412.37)
+        XCTAssertEqual(snapshot.credit?.currency, "USD")
+        XCTAssertNil(snapshot.credit?.resetsAt)
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testParsesZeroBalance() throws {
+        let snapshot = try ExaCredits.parse(d(#"{"credits_usd":0}"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.credit?.amount, 0)
+    }
+
+    func testRejectsMissingMalformedAndNegativeBalance() {
+        for fixture in ["{}", #"{"credits_usd":-0.01}"#, "not json"] {
+            XCTAssertThrowsError(try ExaCredits.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class Context7UsageTests: XCTestCase {
+    private let at = Date(timeIntervalSince1970: 1_800_000_000)
+    private func d(_ s: String) -> Data { Data(s.utf8) }
+
+    func testParsesFreePlanHardRequestCapAndReset() throws {
+        let fixture = #"{ "plan":"free", "usageResetsAt":"2026-12-01T00:00:00.000Z", "member":{"requests":412,"includedInPlan":1000}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        let member = try XCTUnwrap(snapshot.windows.first { $0.label == "月のリクエスト" })
+        XCTAssertEqual(member.remainingCount, 588)
+        XCTAssertEqual(member.usedPercent ?? -1, 41.2, accuracy: 0.001)
+        XCTAssertEqual(member.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
+        XCTAssertEqual(snapshot.fetchedAt, at)
+    }
+
+    func testParsesPaidUsageCostAndConfiguredSpendingLimit() throws {
+        let fixture = #"{ "plan":"pro", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":2340,"includedInPlan":2000}, "teamspace":{"extraRequests":340,"extraCostUsd":1.7,"spendingLimitUsd":50,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        let member = try XCTUnwrap(snapshot.windows.first { $0.label == "本人の月間リクエスト数" })
+        XCTAssertEqual(member.reportedAmount, 2340)
+        XCTAssertEqual(member.reportedUnit, "requests")
+        XCTAssertNil(member.remainingCount)
+        let cost = try XCTUnwrap(snapshot.windows.first { $0.label == "Teamspace追加料金上限" })
+        XCTAssertEqual(cost.usedPercent ?? -1, 3.4, accuracy: 0.001)
+        XCTAssertEqual(cost.resetsAt, Date(timeIntervalSince1970: 1_796_083_200))
+        XCTAssertEqual(snapshot.windows.first { $0.label == "Teamspace追加料金" }?.reportedAmount, 1.7)
+    }
+
+    func testDoesNotInventRemainingWhenSpendingIsUncappedOrPayg() throws {
+        let fixture = #"{ "plan":"payg", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":10,"includedInPlan":0}, "teamspace":{"extraRequests":10,"extraCostUsd":0.05,"spendingLimitUsd":null,"daily":[]} }"#
+        let snapshot = try Context7Usage.parse(d(fixture), fetchedAt: at)
+        XCTAssertNil(snapshot.windows.first { $0.label == "月のリクエスト" })
+        XCTAssertNil(snapshot.windows.first { $0.label == "Teamspace追加料金上限" })
+        XCTAssertEqual(snapshot.windows.first { $0.label == "本人の月間リクエスト数" }?.reportedAmount, 10)
+        XCTAssertEqual(snapshot.windows.first { $0.label == "Teamspace追加料金" }?.reportedAmount, 0.05)
+    }
+
+    func testRejectsMissingMalformedAndInvalidUsageFields() {
+        for fixture in [
+            "{}",
+            #"{ "plan":"free", "usageResetsAt":"bad", "member":{"requests":1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#,
+            #"{ "plan":"free", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":-1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":0,"spendingLimitUsd":null,"daily":[]} }"#,
+            #"{ "plan":"pro", "usageResetsAt":"2026-12-01T00:00:00Z", "member":{"requests":1,"includedInPlan":10}, "teamspace":{"extraRequests":0,"extraCostUsd":-1,"spendingLimitUsd":null,"daily":[]} }"#,
+            "not json"
+        ] {
+            XCTAssertThrowsError(try Context7Usage.parse(d(fixture), fetchedAt: at))
+        }
+    }
+}
+
+
+final class MakeUsageTests: XCTestCase {
+    private let at = Date(timeIntervalSince1970: 1_800_000_000)
+    private func d(_ s: String) -> Data { Data(s.utf8) }
+
+    func testParsesPastThirtyDayCenticreditUsage() throws {
+        let fixture = #"{ "data":[{"date":"2026-11-05","operations":9,"dataTransfer":135,"centicredits":900},{"date":"2026-11-06","operations":15,"dataTransfer":157,"centicredits":1500}] }"#
+        let snapshot = try MakeUsage.parse(d(fixture), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].label, "直近30日の消費実績")
+        XCTAssertEqual(snapshot.windows[0].reportedAmount, 2400)
+        XCTAssertEqual(snapshot.windows[0].reportedUnit, "centicredits")
+        XCTAssertNil(snapshot.windows[0].resetsAt)
+        XCTAssertNil(snapshot.credit)
+    }
+
+    func testParsesNoUsage() throws {
+        let snapshot = try MakeUsage.parse(d(#"{ "data":[] }"#), fetchedAt: at)
+        XCTAssertEqual(snapshot.windows.first?.reportedAmount, 0)
+    }
+
+    func testBuildsAllowlistedZoneURLAndParsesConfig() throws {
+        let config = try MakeUsage.configuration(from: "eu1|12345|secret-token")
+        XCTAssertEqual(config.region, "eu1")
+        XCTAssertEqual(config.organizationID, "12345")
+        XCTAssertEqual(config.token, "secret-token")
+        XCTAssertEqual(try MakeUsage.usageURL(region: config.region, organizationID: config.organizationID),
+                       "https://eu1.make.com/api/v2/organizations/12345/usage?organizationTimezone=true")
+    }
+
+    func testRejectsUnknownZoneAndMalformedConfig() {
+        for value in ["", "eu1|123|", "eu9|123|token", "eu1|not-an-id|token", "eu1|123|token|extra"] {
+            XCTAssertThrowsError(try MakeUsage.configuration(from: value))
+        }
+        XCTAssertThrowsError(try MakeUsage.usageURL(region: "example.com", organizationID: "123"))
+        XCTAssertThrowsError(try MakeUsage.parse(d(#"{ "data":[{"centicredits":-1}] }"#), fetchedAt: at))
+        XCTAssertThrowsError(try MakeUsage.parse(d("not json"), fetchedAt: at))
     }
 }
 

@@ -10,6 +10,7 @@
 | 11 | AIコーディング | Google Antigravity | ○ 条件付き | 実出力の確認待ち | `agy -p /usage` の資料は読めたが、出力の具体例が無い。実際の出力を貼ってもらってから、読み取りを書く |
 | 12 | AIコーディング | Gemini CLI | ○ 条件付き | 今回は見送り | セッション統計だけで、アカウント全体の枠は分からない（調査表にも「確定不可」） |
 | 14 | AIコーディング | Cursor Teams | ○ 条件付き | 今回は見送り | Team 契約と管理者APIキーが必要（個人向けではない） |
+| 20 | AIコーディング | Devin | ◎ Enterprise公式API | 実装済み（実アカウント未検証） | Enterprise Consumption APIとBudgets APIでroot予算のACU残量を取得。Enterprise契約・有効なBudgets機能・finite root budgetと強い権限を要する。自動テスト追加。 |
 | 26 | AIコーディング | OpenCode | ○ CLIローカル統計 | 今回は見送り | ローカルの統計（BYOK の費用の見積り）。実際の残高ではない |
 | 32 | ノーコード・アプリ制作 | GitHub Spark | ○ 条件付き | 資料の確認待ち | GitHub Copilot と同じ課金の枠。Copilot の後 |
 | 37 | デザイン・画像・動画 | Figma AI / Figma Make | ○ Enterprise公式API | 今回は見送り | Enterprise の管理者トークンが必要（5〜6時間の遅れ） |
@@ -17,10 +18,12 @@
 | 51 | デザイン・画像・動画 | Luma Dream Machine API | ◎ 公式API候補 | 実装済み | 公式の資料で入口と項目名を確認済み（実キーでの動作は要確認） |
 | 59 | デザイン・画像・動画 | Synthesia | ◎ 公式API候補 | 実装済み | `GET /api/billing/credits`（Bearer）。total / available と、期間の終わり |
 | 71 | リサーチ・業務 | Poe | ○ Creator API履歴 | 今回は見送り | Creator API の履歴で、一般のチャットの利用を網羅するか未確認 |
-| 86 | LLM・生成API | OpenAI Platform API | ○ 条件付き | 今回は見送り | 管理者キーが必要。残高APIではなく、費用と予算上限からの計算 |
-| 87 | LLM・生成API | Anthropic Console API | ○ 条件付き | 今回は見送り | 管理者権限とベータ用の項目が必要。費用の集計で、残高ではない |
+| 86 | LLM・生成API | OpenAI Platform API | ○ 公式Admin API | 実装済み（PR #27／CI待ち） | Admin APIのSpend Limit GETとCosts GET。enforcement=trueの組織月次上限がある場合のみ当月コストを差し引いて表示。実アカウント未検証。 |
+| 87 | LLM・生成API | Anthropic Console API | ○ 公式Analytics API | 実装済み（PR #28／CI待ち） | Claude Console Admin APIから当月の公式コスト実績を表示。上限・残量は取得不可。実キー未検証、管理者キーとBetaヘッダーが必要。公式集計は通常4時間以内、最大24時間遅延し月次確定まで改訂される。 |
 | 88 | LLM・生成API | Gemini API / AI Studio | ○ 条件付き | 今回は見送り | Google Cloud の課金・監視の権限が必要（要個別検証） |
 | 89 | LLM・生成API | Mistral API | ○ 条件付き | 今回は見送り | Enterprise の管理者API限定 |
+| 90 | LLM・生成API | xAI API | ○ 公式Management API | 実装済み（PR #29／CI待ち） | team-scoped Management key validationからteam IDを取得し、API billing usageを月初から取得。API実績コストのみ。Grok Web契約・残クレジットは対象外。実チーム未検証。 |
+| 93 | LLM・生成API | Together AI | ○ 公式Billing Usage API（Beta） | 実装済み（PR #30／CI待ち） | GET /v1/billing/usage のcost line itemsから当月USDコストを取得。残クレジットAPIではない。API beta accessが組織ごとに必要、最大約1時間遅延。 |
 | 91 | LLM・生成API | GroqCloud | ○ レート制限ヘッダー | 今回は見送り | 通常の応答のヘッダーから取る。取るための問い合わせを、別に1回しないといけない |
 | 98 | LLM・生成API | Stability AI | ◎ 公式残高API | 実装済み（要実機確認） | v0.4.x〜。入口と項目名は調査表のとおり。公式の資料での再確認は、これから |
 | 100 | LLM・生成API | AWS Bedrock | ○ 条件付き | 今回は見送り | クラウドの課金（CloudWatch / Cost Explorer）。要個別検証 |
@@ -48,5 +51,5 @@
 ## 件数
 
 - 資料の確認待ち: 5件
-- 今回は見送り: 25件
-- 実装済み（要実機確認）: 8件
+- 今回は見送り: 21件
+- 実装済み（要実機確認・PR中を含む）: 13件
