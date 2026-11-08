@@ -109,6 +109,14 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "intercom-fin-conversations":
+                let period = IntercomFinConversations.period(now: now)
+                data = try await postJSON("https://api.intercom.io/conversations/search",
+                                          headers: bearer(key).merging(["Content-Type": "application/json",
+                                                                       "Intercom-Version": "2.17"]) { $1 },
+                                          body: IntercomFinConversations.requestBody(period: period),
+                                          allowRedirects: false)
+                return FetchResult(snapshot: try IntercomFinConversations.parse(data, fetchedAt: now), identity: nil)
             case "openart-cli-balance":
                 guard key == "default" else { throw ParseError.unsupported("OpenArt設定にはdefaultを入力してください") }
                 let output = try await Task.detached { try OpenArtCLI.account() }.value
