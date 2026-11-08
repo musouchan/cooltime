@@ -109,6 +109,9 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "gemini-cli-local-usage":
+                let snapshot = try GeminiCLILocalUsage.read(path: key)
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "figma-ai-usage":
                 let config = try FigmaAIUsage.configuration(from: key)
                 let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 6)

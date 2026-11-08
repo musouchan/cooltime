@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "gemini-cli-local-usage", name: "Gemini CLI（ローカルトークン実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://geminicli.com/docs/cli/telemetry/",
+                   bundleIDs: [], hint: "Gemini CLIが書き出した指定TelemetryファイルのAPI応答から入力・出力トークンを集計。残量や回復時刻は表示しません。",
+                   apiKeyHelp: "Gemini CLIのtelemetry.outfileに設定したファイルの絶対パス（認証情報は不要）"),
         ServiceDef(id: "claude", name: "Claude / Claude Code", kind: .subscription, method: .statuslineFile,
                    defaultPaymentURL: "https://claude.ai/settings/billing",
                    bundleIDs: ["com.anthropic.claudefordesktop"],
