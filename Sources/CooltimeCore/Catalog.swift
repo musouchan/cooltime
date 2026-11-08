@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "openart-cli-balance", name: "OpenArt（公式CLI残高）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://openart.ai/", bundleIDs: [],
+                   hint: "ログイン済みOpenArt公式CLIのaccount --jsonから、選択中ワークスペースの残クレジットを読み取ります。回復時刻は推定しません。",
+                   apiKeyHelp: "公式CLIでopenart login後、defaultを入力。認証情報はCLI側で管理します"),
         ServiceDef(id: "gemini-cli-local-usage", name: "Gemini CLI（ローカルトークン実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://geminicli.com/docs/cli/telemetry/",
                    bundleIDs: [], hint: "Gemini CLIが書き出した指定TelemetryファイルのAPI応答から入力・出力トークンを集計。残量や回復時刻は表示しません。",

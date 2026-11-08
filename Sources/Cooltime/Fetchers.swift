@@ -109,6 +109,10 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "openart-cli-balance":
+                guard key == "default" else { throw ParseError.unsupported("OpenArt設定にはdefaultを入力してください") }
+                let output = try await Task.detached { try OpenArtCLI.account() }.value
+                return FetchResult(snapshot: try OpenArtCLIBalance.parse(output, fetchedAt: now), identity: nil)
             case "gemini-cli-local-usage":
                 let snapshot = try GeminiCLILocalUsage.read(path: key)
                 return FetchResult(snapshot: snapshot, identity: nil)
