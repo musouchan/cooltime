@@ -24,7 +24,6 @@ final class FormattingTests: XCTestCase {
         XCTAssertTrue(formatClock(later.addingTimeInterval(86400), now: d, timeZone: tokyo).contains("/"))
     }
 }
-
 final class EvaluationTests: XCTestCase {
     let clock = FixedClock(Date(timeIntervalSince1970: 1_800_000_000))
 
@@ -505,11 +504,21 @@ final class MenuBarDisplayTests: XCTestCase {
     }
 
     func testLimitedShowsEarliestOnly() {
-        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude"), avail(10)])
+        let d = makeMenuBarDisplay([limited(300, "x"), limited(43, "claude")])
         XCTAssertEqual(d, .limited(until: now.addingTimeInterval(43 * 60), source: "claude"))
         XCTAssertEqual(d.text(now: now), "あと43分")
         XCTAssertEqual(d.characterState, .limit)
         XCTAssertEqual(d.source, "claude")
+    }
+
+    /// 一方が制限中でも、もう一方が使えるときは、使える方の残りを出す。
+    func testPartlyLimitedShowsRemainingOfTheOneThatWorks() {
+        let d = makeMenuBarDisplay([limited(111, "codex"), avail(49, "claude")])
+        XCTAssertEqual(d, .remaining(percent: 51, source: "claude", scope: nil))
+        XCTAssertEqual(d.characterState, .ok)
+        // 使える方が取得に失敗しているときは、古い数字を出さず、制限中の時間にする
+        let failed = MenuBarCandidate(state: .available, snapshot: avail(49, "claude").snapshot, fetchFailed: true, source: "claude")
+        XCTAssertEqual(makeMenuBarDisplay([limited(111, "codex"), failed]), .limited(until: now.addingTimeInterval(111 * 60), source: "codex"))
     }
 
     func testNoLimitShowsLowestRemainingWithItsSource() {
@@ -1259,5 +1268,162 @@ final class MakeUsageTests: XCTestCase {
         XCTAssertThrowsError(try MakeUsage.usageURL(region: "example.com", organizationID: "123"))
         XCTAssertThrowsError(try MakeUsage.parse(d(#"{ "data":[{"centicredits":-1}] }"#), fetchedAt: at))
         XCTAssertThrowsError(try MakeUsage.parse(d("not json"), fetchedAt: at))
+    }
+}
+
+final class RecoveryTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func snap(_ used: Double, resets: Date?, at: Date) -> Snapshot {
+        Snapshot(windows: [UsageWindow(label: "5時間", usedPercent: used, resetsAt: resets)], fetchedAt: at)
+    }
+
+    func testLimitEndedOnlyWhenAvailableAfterRefetch() {
+        let back = snap(10, resets: now.addingTimeInterval(3600), at: now)
+        XCTAssertEqual(detectRecovery(wasLimited: true, previous: nil, current: back, now: now), .limitEnded)
+        // 前から制限中でなければ、通知しない
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: nil, current: back, now: now))
+        // まだ制限中なら、通知しない
+        let still = snap(100, resets: now.addingTimeInterval(600), at: now)
+        XCTAssertNil(detectRecovery(wasLimited: true, previous: nil, current: still, now: now))
+        // 戻り時刻を過ぎただけで取り直していない（stale）なら、戻ったとは決めない
+        let old = snap(100, resets: now.addingTimeInterval(-60), at: now.addingTimeInterval(-7200))
+        XCTAssertNil(detectRecovery(wasLimited: true, previous: nil, current: old, now: now))
+    }
+
+    func testCreditIncrease() {
+        func credit(_ a: Double, _ cur: String = "USD") -> Snapshot { Snapshot(credit: CreditBalance(amount: a, currency: cur), fetchedAt: now) }
+        XCTAssertEqual(detectRecovery(wasLimited: false, previous: credit(1), current: credit(21), now: now),
+                       .creditIncreased(from: 1, to: 21, currency: "USD"))
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: credit(5), current: credit(4), now: now))  // 減った
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: nil, current: credit(5), now: now))        // 初回
+        XCTAssertNil(detectRecovery(wasLimited: false, previous: credit(1, "CNY"), current: credit(9), now: now))  // 通貨が違う
+    }
+
+    func testMessageHasNoSecrets() {
+        XCTAssertEqual(recoveryMessage(serviceName: "Claude", recovery: .limitEnded), "Claude が使えるようになりました")
+        XCTAssertTrue(recoveryMessage(serviceName: "Meshy", recovery: .creditIncreased(from: 1, to: 250, currency: "credits")).contains("250"))
+    }
+}
+
+final class StatusPageTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let utc = TimeZone(identifier: "UTC")!
+
+    func testPageShowsStateRemainingAndTime() {
+        let w = UsageWindow(label: "5時間枠", usedPercent: 40, resetsAt: now.addingTimeInterval(3600))
+        let ok = StatusEntry(title: "Claude / Claude Code", state: .available, windows: [w], credit: nil, fetchedAt: now, failed: false)
+        let lim = StatusEntry(title: "ChatGPT / Codex", state: .limited(until: now.addingTimeInterval(59 * 60)),
+                              windows: [UsageWindow(label: "5時間枠", usedPercent: 100, resetsAt: now.addingTimeInterval(59 * 60))],
+                              credit: nil, fetchedAt: now, failed: false)
+        let html = renderStatusPage([ok, lim], generatedAt: now, timeZone: utc)
+        XCTAssertTrue(html.contains("残り 60%"))
+        XCTAssertTrue(html.contains("あと59分"))
+        XCTAssertTrue(html.contains("尽きた"))
+        XCTAssertTrue(html.contains("時点"))
+        // 制限中が、使用可能より先
+        XCTAssertLessThan(html.range(of: "制限中</h2>")!.lowerBound, html.range(of: "使用可能</h2>")!.lowerBound)
+        XCTAssertTrue(html.contains("viewport"))
+    }
+
+    func testEscapesAndFlagsFailures() {
+        let e = StatusEntry(title: "<b>x</b> & y", state: .available, windows: [], credit: CreditBalance(amount: 8.4, currency: "credits"),
+                            fetchedAt: now, failed: true)
+        let html = renderStatusPage([e], generatedAt: now, timeZone: utc)
+        XCTAssertFalse(html.contains("<b>x</b>"))
+        XCTAssertTrue(html.contains("&lt;b&gt;x&lt;/b&gt; &amp; y"))
+        XCTAssertTrue(html.contains("取得に失敗しています"))
+        XCTAssertTrue(html.contains("8.4"))
+    }
+
+    func testEmpty() {
+        XCTAssertTrue(renderStatusPage([], generatedAt: now, timeZone: utc).contains("まだ登録されていません"))
+    }
+}
+
+final class StatusJSONTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testJSONHasStateTimesAndNoSecrets() throws {
+        let lim = StatusEntry(title: "ChatGPT / Codex", state: .limited(until: now.addingTimeInterval(3540)),
+                              windows: [UsageWindow(label: "5時間枠", usedPercent: 100, resetsAt: now.addingTimeInterval(3540))],
+                              credit: nil, fetchedAt: now, failed: false)
+        let ok = StatusEntry(title: "Claude", state: .available,
+                             windows: [UsageWindow(label: "週の枠", usedPercent: 86, remainingCount: nil, resetsAt: nil)],
+                             credit: CreditBalance(amount: 8.4, currency: "credits"), fetchedAt: now, failed: true)
+        let data = renderStatusJSON([lim, ok], generatedAt: now)
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(root["generatedAt"] as? Int, 1_800_000_000)
+        let entries = try XCTUnwrap(root["entries"] as? [[String: Any]])
+        XCTAssertEqual(entries[0]["state"] as? String, "limited")
+        XCTAssertEqual(entries[0]["until"] as? Int, 1_800_003_540)
+        XCTAssertEqual(entries[1]["state"] as? String, "available")
+        XCTAssertEqual(entries[1]["credit"] as? String, "8.4")
+        XCTAssertEqual(entries[1]["failed"] as? Bool, true)
+        let w = try XCTUnwrap((entries[1]["windows"] as? [[String: Any]])?.first)
+        XCTAssertEqual(w["remainingPercent"] as? Int, 14)
+        XCTAssertNil(w["resetsAt"])  // 無ければ作らない
+    }
+}
+
+final class LabeledSummaryTests: XCTestCase {
+    func snap(_ ws: [UsageWindow]) -> Snapshot { Snapshot(windows: ws, fetchedAt: Date(timeIntervalSince1970: 1_800_000_000)) }
+
+    func testNamesTheTightestWindow() {
+        // スクリーンショットのとおり: 5時間は88%、週は28% のとき、「週 残り28%」
+        let s = snap([UsageWindow(label: "5時間枠", usedPercent: 12), UsageWindow(label: "週の枠", usedPercent: 72)])
+        XCTAssertEqual(availableSummaryLabeled(s), "週 残り28%")
+        let t = snap([UsageWindow(label: "5時間枠", usedPercent: 90), UsageWindow(label: "週の枠", usedPercent: 10)])
+        XCTAssertEqual(availableSummaryLabeled(t), "5時間 残り10%")
+    }
+
+    func testCountsAndShortLabels() {
+        XCTAssertEqual(availableSummaryLabeled(snap([UsageWindow(label: "月の検索回数", usedPercent: 30, remainingCount: 70)])), "月 残り70")
+        XCTAssertEqual(shortWindowLabel("5時間枠"), "5時間")
+        XCTAssertEqual(shortWindowLabel("週の枠"), "週")
+        XCTAssertEqual(shortWindowLabel("月のAIクレジット"), "月")
+        XCTAssertNil(availableSummaryLabeled(snap([UsageWindow(label: "5時間枠", usedPercent: 100)])))
+    }
+}
+
+final class RemindersPlanTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func want(_ key: String, _ mins: Double) -> DesiredReminder { DesiredReminder(key: key, title: "\(key) が使えるようになりました", due: now.addingTimeInterval(mins * 60)) }
+    func have(_ id: String, _ key: String, _ mins: Double?, done: Bool = false) -> ExistingReminder {
+        ExistingReminder(id: id, key: key, due: mins.map { now.addingTimeInterval($0 * 60) }, completed: done)
+    }
+
+    func testCreatesWhenMissing() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [], now: now), [.create(want("a", 59))])
+    }
+
+    func testKeepsWhenSameAndUpdatesWhenShifted() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59)], now: now), [])
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59.5)], now: now), [])  // 2分未満のずれは、直さない
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 120)], now: now),
+                       [.update(id: "1", due: want("a", 59).due, title: want("a", 59).title)])
+    }
+
+    func testReusesOverdueOpenItemSoItDoesNotPileUp() {
+        // 期限を過ぎて残っている項目は、次の制限で使い回す（増えない）
+        let a = planReminders(desired: [want("a", 300)], existing: [have("1", "a", -60)], now: now)
+        XCTAssertEqual(a, [.update(id: "1", due: want("a", 300).due, title: want("a", 300).title)])
+    }
+
+    func testDeletesFutureItemWhenNoLongerLimitedButKeepsOverdue() {
+        XCTAssertEqual(planReminders(desired: [], existing: [have("1", "a", 30)], now: now), [.delete(id: "1")])
+        XCTAssertEqual(planReminders(desired: [], existing: [have("2", "a", -30)], now: now), [])  // 「使える」の印として残す
+    }
+
+    func testIgnoresCompletedAndRemovesDuplicates() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59, done: true)], now: now), [.create(want("a", 59))])
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59), have("2", "a", 59)], now: now), [.delete(id: "2")])
+    }
+
+    func testDesiredOnlyForLimitedWithKey() {
+        let lim = StatusEntry(title: "Claude", state: .limited(until: now.addingTimeInterval(600)), windows: [], credit: nil, fetchedAt: now, failed: false, key: "k1")
+        let ok = StatusEntry(title: "Codex", state: .available, windows: [], credit: nil, fetchedAt: now, failed: false, key: "k2")
+        let nokey = StatusEntry(title: "X", state: .limited(until: now.addingTimeInterval(600)), windows: [], credit: nil, fetchedAt: now, failed: false)
+        XCTAssertEqual(desiredReminders(from: [lim, ok, nokey]).map(\.key), ["k1"])
+        XCTAssertEqual(desiredReminders(from: [lim]).first?.title, "Claude が使えるようになりました")
     }
 }

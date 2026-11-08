@@ -10,7 +10,7 @@ app="build/Cooltime.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/Cooltime"
-cp scripts/cooltime-statusline.sh "$app/Contents/Resources/"
+cp scripts/cooltime-statusline.sh scripts/cooltime-widget.js "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,16 +25,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSAppTransportSecurity</key><dict>
-    <key>NSExceptionDomains</key><dict>
-      <key>127.0.0.1</key><dict>
-        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
-      </dict>
-    </dict>
-  </dict>
+  <key>NSRemindersFullAccessUsageDescription</key><string>制限が解ける時刻を、iPhone に知らせるために、リマインダーの「Cooltime」リストに項目を置きます。</string>
+  <key>NSRemindersUsageDescription</key><string>制限が解ける時刻を、iPhone に知らせるために、リマインダーの「Cooltime」リストに項目を置きます。</string>
+  <key>NSAppleEventsUsageDescription</key><string>制限が戻ったことを、自分宛ての iMessage で知らせるために、「メッセージ」を操作します。</string>
 </dict></plist>
 PLIST
 codesign --force --deep --sign - "$app"
 (cd build && ditto -c -k --keepParent Cooltime.app Cooltime.zip)
 echo "作成しました: build/Cooltime.zip"
-

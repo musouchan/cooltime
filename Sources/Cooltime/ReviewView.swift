@@ -8,9 +8,6 @@ struct ReviewView: View {
     @EnvironmentObject var model: AppModel
     @State private var span: ReviewSpan = .week
     @State private var anchor = Date()
-    @AppStorage(DisplayStyle.key) private var displayStyle = DisplayStyle.simple.rawValue
-
-    private var ghost: Bool { displayStyle == DisplayStyle.ghost.rawValue }
 
     var body: some View {
         let (from, to) = UsageHistory.range(span, containing: anchor)
@@ -150,63 +147,19 @@ struct ReviewView: View {
         .frame(height: 110)
     }
 
-    // MARK: おばけ積み
-
-    /// 1匹が何%分か。積み上がる数が、10匹までに収まるように決める。
-    private func unit(for maxValue: Double) -> Double {
-        [1, 2, 5, 10, 20, 25, 50, 100].first { ceil(maxValue / $0) <= 10 } ?? 100
-    }
-
-    private func columns(from: Date, to: Date, bars: [UsageBar], marks: [LimitMark]) -> [GhostStackChart.Column] {
-        let cal = Calendar.current
-        let comp: Calendar.Component = span == .day ? .hour : .day
-        var totals: [Int: Double] = [:]
-        for b in bars { totals[Int(b.start.timeIntervalSince1970), default: 0] += b.points }
-
-        var out: [GhostStackChart.Column] = []
-        var start = from
-        var index = 0
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "E"
-        while start < to, index < 400 {
-            let next = cal.date(byAdding: comp, value: 1, to: start) ?? to
-            let label: String?
-            switch span {
-            case .day: label = cal.component(.hour, from: start) % 3 == 0 ? "\(cal.component(.hour, from: start))" : nil
-            case .week: label = f.string(from: start)
-            case .month: label = (cal.component(.day, from: start) - 1) % 5 == 0 ? "\(cal.component(.day, from: start))" : nil
-            }
-            out.append(.init(id: index, label: label, value: totals[Int(start.timeIntervalSince1970)] ?? 0,
-                             limit: marks.contains { $0.start >= start && $0.start < next }))
-            start = next
-            index += 1
-        }
-        return out
-    }
-
-    /// いつ使ったか（おばけ積み）と、上限に当たった日時、何時によく使うか。
+    /// いつ使ったかと、上限に当たった日時、何時によく使うか。
     @ViewBuilder
     private func chartSection(from: Date, to: Date) -> some View {
         let bars = model.history.usageBars(span: span, from: from, to: to)
         let marks = model.history.limitMarks(from: from, to: to)
         let totals = model.history.hourOfDayTotals(from: from, to: to)
-        let cols = columns(from: from, to: to, bars: bars, marks: marks)
-        let unit = unit(for: cols.map(\.value).max() ?? 0)
 
         VStack(alignment: .leading, spacing: 10) {
             Text(span == .day ? "いつ使ったか（1時間ごと）" : "いつ使ったか（1日ごと）").font(.caption).foregroundStyle(.secondary)
             if bars.isEmpty && marks.isEmpty {
                 Text("この期間は、使った記録がありません。").foregroundStyle(.secondary)
             } else {
-                if ghost {
-                    GhostStackChart(columns: cols, unit: unit, dayView: span == .day)
-                        .frame(height: 230)
-                    Label("おばけ1匹 ＝ 週（月）の枠の \(Int(unit))% 分。眠っている赤いおばけは、上限に当たった日", systemImage: "info.circle")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    simpleChart(from: from, to: to, bars: bars, marks: marks)
-                }
+                simpleChart(from: from, to: to, bars: bars, marks: marks)
 
                 if !marks.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
@@ -221,11 +174,7 @@ struct ReviewView: View {
 
             if span != .day, totals.contains(where: { $0 > 0 }) {
                 Text("何時によく使うか（0〜23時の合計。大きいほど、よく使う）").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
-                if ghost {
-                    GhostSizeRow(values: totals).frame(height: 96)
-                } else {
-                    simpleHourChart(totals: totals)
-                }
+                simpleHourChart(totals: totals)
             }
 
             if let peak = peakHour(span: span, bars: bars, totals: totals) {

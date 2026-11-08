@@ -37,6 +37,9 @@ final class StatusItemController: NSObject {
 
         // 場所を、macOS に覚えさせる（Command を押しながらドラッグして、好きな位置に動かせる）
         item.autosaveName = "app.cooltime.statusitem"
+        // 位置を覚えさせると、Command + ドラッグで外したとき（または macOS が隠したとき）の「非表示」も、
+        // 次の起動以降に残ってしまい、アイコンが出なくなる。起動のたびに、表示に戻す。
+        item.isVisible = true
         if let button = item.button {
             button.target = self
             button.action = #selector(toggle)
@@ -46,8 +49,11 @@ final class StatusItemController: NSObject {
 
         // モデルの変化（数字・状態）と、設定の変更で、表示を直す
         model.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refresh() }.store(in: &cancellables)
+        // 設定の変更。関係のない設定の書き込み（記録など）では、描き直さない。
+        // キャラクターを変えただけのときは、画像だけを、すぐ差し替える（軽い）。
         NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-            .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refresh() }.store(in: &cancellables)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.prefsChanged() } }.store(in: &cancellables)
 
         // 動かしてよいかが変わる出来事
         let ws = NSWorkspace.shared.notificationCenter
@@ -62,6 +68,7 @@ final class StatusItemController: NSObject {
                 .sink { [weak self] _ in self?.updateTimer() }.store(in: &cancellables)
         }
 
+        lastPrefs = currentPrefs()
         refresh()
     }
 
@@ -76,9 +83,69 @@ final class StatusItemController: NSObject {
         }
     }
 
+    private struct Prefs: Equatable {
+        var character: String
+        var compact: Bool
+        var background: Bool
+        var motion: MotionSetting
+        var lowPower: Bool
+    }
+    private var lastPrefs: Prefs?
+
+    private func currentPrefs() -> Prefs {
+        Prefs(character: CharacterPrefs.characterID, compact: CharacterPrefs.menuBarCompact,
+              background: CharacterPrefs.menuBarBackground, motion: CharacterPrefs.motion,
+              lowPower: CharacterPrefs.motionInLowPower)
+    }
+
+    private func prefsChanged() {
+        let now = currentPrefs()
+        defer { lastPrefs = now }
+        guard let old = lastPrefs, old != now else { return }
+        var rest = old
+        rest.character = now.character
+        if rest == now {
+            // キャラクターだけが変わった
+            updateImage(force: true)
+        } else {
+            refresh()
+        }
+    }
+
+    /// アイコンが隠れていたら、表示に戻す（アプリをもう一度開いたときに呼ぶ）。
+    func ensureVisible() { item.isVisible = true }
+
     func closePopover() { popover.performClose(nil) }
 
     // MARK: 表示
+
+    /// 丸い背景。壁紙で透けて見づらくならないよう、背景に加えて、はっきりした枠線も付ける
+    /// （色は、文字と同じ labelColor から作るので、ライト・ダークのどちらでも、文字と同じだけ目立つ）。
+    /// 「コントラストを上げる」がオンのときは、さらに濃くする。角は、いちばん丸く（高さの半分）。
+    private func applyBackground(to button: NSStatusBarButton) {
+        button.wantsLayer = true
+        guard let layer = button.layer else { return }
+        guard CharacterPrefs.menuBarBackground else {
+            layer.backgroundColor = nil
+            layer.borderWidth = 0
+            layer.cornerRadius = 0
+            return
+        }
+        let high = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        var fill = NSColor.labelColor.withAlphaComponent(high ? 0.30 : 0.20).cgColor
+        var line = NSColor.labelColor.withAlphaComponent(high ? 0.95 : 0.65).cgColor
+        button.effectiveAppearance.performAsCurrentDrawingAppearance {
+            fill = NSColor.labelColor.withAlphaComponent(high ? 0.30 : 0.20).cgColor
+            line = NSColor.labelColor.withAlphaComponent(high ? 0.95 : 0.65).cgColor
+        }
+        layer.backgroundColor = fill
+        layer.borderColor = line
+        layer.borderWidth = high ? 1.5 : 1
+        // ほぼ完全なカプセル形にするため、高さの半分より、ほんの少し小さくする。
+        // 高さの半分を超える値（999 など）だと、角丸の切り抜きが作れず、アイコンごと見えなくなるため、使わない。
+        let side = min(button.bounds.height, button.bounds.width)
+        layer.cornerRadius = side > 2 ? side / 2 - 0.5 : 10
+    }
 
     private func refresh() {
         guard let button = item.button else { return }
@@ -102,7 +169,7 @@ final class StatusItemController: NSObject {
                     title.append(NSAttributedString(attachment: attachment))
                     title.append(NSAttributedString(string: " "))
                 }
-                title.append(NSAttributedString(string: text, attributes: [
+                title.append(NSAttributedString(string: text + " ", attributes: [
                     .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
                 ]))
                 button.attributedTitle = title
@@ -112,6 +179,7 @@ final class StatusItemController: NSObject {
                 button.imagePosition = .imageOnly
             }
         }
+        applyBackground(to: button)
         button.toolTip = model.menuBarTooltip
         button.setAccessibilityLabel("Cooltime: " + (service.map { "\($0.name) " } ?? "") + (text ?? "取得できていません"))
         updateImage(force: true)

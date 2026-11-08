@@ -14,14 +14,6 @@ enum MotionSetting: String, CaseIterable, Identifiable {
     }
 }
 
-/// 残りの棒と、振り返りのグラフの見た目。既定はシンプル。メニューバーは、いつもシンプル。
-enum DisplayStyle: String, CaseIterable, Identifiable {
-    case simple, ghost
-    static let key = "displayStyle"
-    var id: String { rawValue }
-    var label: String { self == .simple ? "シンプル" : "おばけ" }
-}
-
 /// リセットの書き方。既定は日時（「17:20 リセット」）。選べる。
 enum ResetTimeStyle: String, CaseIterable, Identifiable {
     case absolute, relative
@@ -45,12 +37,15 @@ enum CharacterPrefs {
     static let lowPowerKey = "characterMotionInLowPower"
     /// メニューバーが混んでいて隠れるときのための、せまい表示（アイコンなし・短い文字）。
     static let compactKey = "menuBarCompact"
+    static let backgroundKey = "menuBarBackground"
 
     static var characterID: String {
         let v = UserDefaults.standard.string(forKey: characterKey) ?? "bunny"
         return CharacterData.ids.contains(v) ? v : "bunny"
     }
     static var menuBarCompact: Bool { UserDefaults.standard.bool(forKey: compactKey) }
+    /// メニューバーの表示に、うすい丸い背景を付ける（既定はオン）。
+    static var menuBarBackground: Bool { (UserDefaults.standard.object(forKey: backgroundKey) as? Bool) ?? true }
     static var motionInLowPower: Bool { UserDefaults.standard.bool(forKey: lowPowerKey) }
     static var motion: MotionSetting {
         MotionSetting(rawValue: UserDefaults.standard.string(forKey: motionKey) ?? "") ?? .full

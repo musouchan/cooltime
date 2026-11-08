@@ -214,8 +214,8 @@ final class AppModel: ObservableObject {
         }.joined(separator: "\n")
     }
 
-    /// 管理画面の「キャラクター」の行（アカウントではないので、決まった ID で選ぶ）。
-    static let characterPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
+    /// 管理画面の「設定」（アカウントではないので、決まった ID で選ぶ）。
+    static let settingsPane = UUID(uuidString: "00000000-0000-0000-0000-00000000C4A2")!
 
     // MARK: 取得
 
@@ -251,8 +251,10 @@ final class AppModel: ObservableObject {
             let result = try await Fetchers.fetch(account: account, service: service)
             // 古い記録で、新しいデータを上書きしない。
             if result.snapshot.fetchedAt >= (snapshots[account.id]?.fetchedAt ?? .distantPast) {
+                let previous = snapshots[account.id]
                 snapshots[account.id] = result.snapshot
                 record(account, result.snapshot)
+                checkRecovery(account, service, previous: previous, current: result.snapshot)
             }
             apply(result.identity, to: account.id)
             errors[account.id] = result.warning
@@ -261,6 +263,59 @@ final class AppModel: ObservableObject {
             errors[account.id] = error.localizedDescription
         }
         now = clock.now
+        publishStatusPage()
+    }
+
+    /// スマホ用のページを書き出す（設定がオンのときだけ。1分より短い間隔では書かない）。
+    private var lastPagePublish = Date.distantPast
+    func publishStatusPage(force: Bool = false) {
+        guard StatusPageWriter.isEnabled || StatusPageWriter.widgetEnabled || RemindersSync.isEnabled else { return }
+        guard force || clock.now.timeIntervalSince(lastPagePublish) >= 60 else { return }
+        lastPagePublish = clock.now
+        let entries = items.map {
+            StatusEntry(title: $0.title, state: $0.state, windows: $0.snapshot?.windows ?? [], credit: $0.snapshot?.credit,
+                        fetchedAt: $0.snapshot?.fetchedAt, failed: $0.fetchError != nil, key: $0.account.id.uuidString)
+        }
+        // iCloud のフォルダへの書き込みは、待たされることがある。画面（メインスレッド）を止めないよう、別のところで書く。
+        let at = clock.now
+        let page = StatusPageWriter.isEnabled, widget = StatusPageWriter.widgetEnabled
+        if page || widget {
+            Task.detached(priority: .utility) { [weak self] in
+                var errors: [String] = []
+                if page, let e = StatusPageWriter.write(entries, now: at) { errors.append(e) }
+                if widget, let e = StatusPageWriter.writeWidget(entries, now: at) { errors.append(e) }
+                let message = errors.isEmpty ? nil : errors.joined(separator: "\n")
+                await MainActor.run { self?.pageError = message }
+            }
+        }
+        if RemindersSync.isEnabled {
+            Task { reminderError = await RemindersSync.sync(entries, now: at) }
+        }
+    }
+    @Published var pageError: String?
+    @Published var reminderError: String?
+
+    // MARK: 戻ったときの通知（自分宛ての iMessage）
+
+    private static let limitedKey = "limitedAccountIDs"
+
+    /// 制限中と分かったアカウント。アプリを閉じていた間に戻ったものも、次の取得で気づけるように、覚えておく。
+    private var limitedIDs: Set<UUID> {
+        get { Set((UserDefaults.standard.stringArray(forKey: Self.limitedKey) ?? []).compactMap(UUID.init)) }
+        set { UserDefaults.standard.set(newValue.map(\.uuidString), forKey: Self.limitedKey) }
+    }
+
+    private func checkRecovery(_ account: Account, _ service: ServiceDef, previous: Snapshot?, current: Snapshot) {
+        var limited = limitedIDs
+        let wasLimited = limited.contains(account.id)
+        let state = evaluate(current, now: clock.now)
+        if case .limited = state { limited.insert(account.id) }
+        let recovery = detectRecovery(wasLimited: wasLimited, previous: previous, current: current, now: clock.now)
+        if recovery == .limitEnded { limited.remove(account.id) }
+        if limited != limitedIDs { limitedIDs = limited }
+        guard let recovery, IMessageNotifier.isEnabled, !IMessageNotifier.handle.isEmpty else { return }
+        let text = recoveryMessage(serviceName: service.name, recovery: recovery)
+        Task { try? await IMessageNotifier.send(text, to: IMessageNotifier.handle) }
     }
 
     func refreshAll() async {
