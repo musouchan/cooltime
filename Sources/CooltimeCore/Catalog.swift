@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "ada-resolution-usage", name: "Ada（自動解決分類実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://app.ada.cx/",
+                   bundleIDs: [], hint: "公式Data Export APIで、前UTC日に作成された非テスト会話のうち自動解決と分類された件数。契約の請求対象解決数や残枠ではありません。",
+                   apiKeyHelp: "Ada agent handle|Data Export API key（契約でData Export有効化が必要。広いAPI権限を持つキーをKeychainに保存）"),
         ServiceDef(id: "livekit-cloud-sessions", name: "LiveKit Cloud（プロジェクトのセッション実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://cloud.livekit.io/",
                    bundleIDs: [], hint: "Scale以上の公式Analytics APIで、前UTC日に開始されたプロジェクトのセッション数を取得。Agents専用の実行時間や残枠は表示しません。",
