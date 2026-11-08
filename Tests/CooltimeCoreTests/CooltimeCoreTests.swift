@@ -957,3 +957,23 @@ final class StatusJSONTests: XCTestCase {
         XCTAssertNil(w["resetsAt"])  // 無ければ作らない
     }
 }
+
+final class LabeledSummaryTests: XCTestCase {
+    func snap(_ ws: [UsageWindow]) -> Snapshot { Snapshot(windows: ws, fetchedAt: Date(timeIntervalSince1970: 1_800_000_000)) }
+
+    func testNamesTheTightestWindow() {
+        // スクリーンショットのとおり: 5時間は88%、週は28% のとき、「週 残り28%」
+        let s = snap([UsageWindow(label: "5時間枠", usedPercent: 12), UsageWindow(label: "週の枠", usedPercent: 72)])
+        XCTAssertEqual(availableSummaryLabeled(s), "週 残り28%")
+        let t = snap([UsageWindow(label: "5時間枠", usedPercent: 90), UsageWindow(label: "週の枠", usedPercent: 10)])
+        XCTAssertEqual(availableSummaryLabeled(t), "5時間 残り10%")
+    }
+
+    func testCountsAndShortLabels() {
+        XCTAssertEqual(availableSummaryLabeled(snap([UsageWindow(label: "月の検索回数", usedPercent: 30, remainingCount: 70)])), "月 残り70")
+        XCTAssertEqual(shortWindowLabel("5時間枠"), "5時間")
+        XCTAssertEqual(shortWindowLabel("週の枠"), "週")
+        XCTAssertEqual(shortWindowLabel("月のAIクレジット"), "月")
+        XCTAssertNil(availableSummaryLabeled(snap([UsageWindow(label: "5時間枠", usedPercent: 100)])))
+    }
+}

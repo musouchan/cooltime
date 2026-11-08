@@ -42,6 +42,31 @@ public func availableSummary(_ snapshot: Snapshot) -> String? {
     return nil
 }
 
+/// 枠の名前を、短くする（「5時間枠」→「5時間」、「週の枠」→「週」、「月の利用額」→「月」）。
+public func shortWindowLabel(_ label: String) -> String {
+    if label.contains("時間") || label.contains("分") {
+        // 「5時間枠」→「5時間」
+        return label.replacingOccurrences(of: "枠", with: "")
+    }
+    if label.contains("週") { return "週" }
+    if label.contains("月") { return "月" }
+    return label.replacingOccurrences(of: "の枠", with: "").replacingOccurrences(of: "枠", with: "")
+}
+
+/// 管理画面の一覧用。何の残りかが分かるように、枠の名前を付ける（「週 残り28%」）。
+/// 数がある枠はその数、無ければ、残りが最も少ない枠の割合。
+public func availableSummaryLabeled(_ snapshot: Snapshot) -> String? {
+    let candidates = snapshot.windows.filter { !$0.isExhausted }
+    if let w = candidates.first(where: { $0.remainingCount != nil }), let n = w.remainingCount {
+        return "\(shortWindowLabel(w.label)) 残り\(Int(n.rounded()))"
+    }
+    let withPercent = candidates.compactMap { w in w.remainingPercent.map { (w, $0) } }
+    if let (w, p) = withPercent.min(by: { $0.1 < $1.1 }) {
+        return "\(shortWindowLabel(w.label)) 残り\(Int(p.rounded()))%"
+    }
+    return nil
+}
+
 public struct MenuBarPick: Equatable, Sendable {
     public let id: UUID
     public let until: Date

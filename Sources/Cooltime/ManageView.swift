@@ -124,7 +124,7 @@ struct ManageView: View {
         case .unset: return item.snapshot?.credit == nil ? "未取得" : ""
         case .available:
             if let c = item.snapshot?.credit { return formatMoney(c) }
-            return item.snapshot.flatMap(availableSummary) ?? "使える"
+            return item.snapshot.flatMap(availableSummaryLabeled) ?? "使える"
         }
     }
 }
