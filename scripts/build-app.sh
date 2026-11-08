@@ -25,6 +25,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSRemindersFullAccessUsageDescription</key><string>制限が解ける時刻を、iPhone に知らせるために、リマインダーの「Cooltime」リストに項目を置きます。</string>
+  <key>NSRemindersUsageDescription</key><string>制限が解ける時刻を、iPhone に知らせるために、リマインダーの「Cooltime」リストに項目を置きます。</string>
   <key>NSAppleEventsUsageDescription</key><string>制限が戻ったことを、自分宛ての iMessage で知らせるために、「メッセージ」を操作します。</string>
 </dict></plist>
 PLIST
