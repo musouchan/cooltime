@@ -182,5 +182,8 @@ private struct CharacterRow: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color.accentColor.opacity(0.12) : Color.clear))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(selected ? Color.accentColor : Color.gray.opacity(0.3), lineWidth: selected ? 2 : 1))
+        // 枠の中のどこを押しても反応するように、押せる範囲を枠全体にする。
+        // （これが無いと、透明な背景と余白は押せず、文字か絵の上を押したときだけ反応していた）
+        .contentShape(RoundedRectangle(cornerRadius: 10))
     }
 }
