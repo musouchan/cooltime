@@ -108,10 +108,10 @@ final class StatusItemController: NSObject {
         layer.backgroundColor = fill
         layer.borderColor = line
         layer.borderWidth = high ? 1.5 : 1
-        // 完全なカプセル形にするため、高さの半分にする。
-        // 高さを超える大きな値（999 など）は、アイコンごと見えなくなる恐れがあるので、使わない。
-        let h = button.bounds.height
-        layer.cornerRadius = h > 0 ? h / 2 : 11
+        // ほぼ完全なカプセル形にするため、高さの半分より、ほんの少し小さくする。
+        // 高さの半分を超える値（999 など）だと、角丸の切り抜きが作れず、アイコンごと見えなくなるため、使わない。
+        let side = min(button.bounds.height, button.bounds.width)
+        layer.cornerRadius = side > 2 ? side / 2 - 0.5 : 10
     }
 
     private func refresh() {
