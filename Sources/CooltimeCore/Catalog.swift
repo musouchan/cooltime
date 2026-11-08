@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "intercom-fin-conversations", name: "Intercom Fin（参加会話数）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://app.intercom.com/",
+                   bundleIDs: [], hint: "公式Conversations Search APIで本番Finが参加した会話を直近7完全UTC日分集計。請求対象の解決数、残量、月間上限ではありません。",
+                   apiKeyHelp: "Intercom workspaceのConversations読み取り権限を持つAccess Token（Keychain保存）"),
         ServiceDef(id: "openart-cli-balance", name: "OpenArt（公式CLI残高）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://openart.ai/", bundleIDs: [],
                    hint: "ログイン済みOpenArt公式CLIのaccount --jsonから、選択中ワークスペースの残クレジットを読み取ります。回復時刻は推定しません。",
