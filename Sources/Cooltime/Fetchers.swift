@@ -109,6 +109,13 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "livekit-cloud-sessions":
+                let config = try LiveKitCloudSessions.configuration(from: key)
+                let token = try LiveKitCloudSessions.accessToken(config: config, now: now)
+                let snapshot = try await LiveKitCloudSessions.fetch(config: config, fetchedAt: now) { url in
+                    try await get(url, headers: bearer(token), allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "intercom-fin-conversations":
                 let period = IntercomFinConversations.period(now: now)
                 data = try await postJSON("https://api.intercom.io/conversations/search",

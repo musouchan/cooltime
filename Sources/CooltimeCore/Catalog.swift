@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "livekit-cloud-sessions", name: "LiveKit Cloud（プロジェクトのセッション実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://cloud.livekit.io/",
+                   bundleIDs: [], hint: "Scale以上の公式Analytics APIで、前UTC日に開始されたプロジェクトのセッション数を取得。Agents専用の実行時間や残枠は表示しません。",
+                   apiKeyHelp: "LiveKit Cloud project ID（p_から始まる）|API key|API secret（Keychain保存）"),
         ServiceDef(id: "intercom-fin-conversations", name: "Intercom Fin（参加会話数）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://app.intercom.com/",
                    bundleIDs: [], hint: "公式Conversations Search APIで本番Finが参加した会話を直近7完全UTC日分集計。請求対象の解決数、残量、月間上限ではありません。",
