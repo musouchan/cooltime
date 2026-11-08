@@ -50,7 +50,7 @@ public enum GeminiCLILocalUsage {
                     guard let inCount = count(attributes["input_token_count"]),
                           let outCount = count(attributes["output_token_count"]),
                           let timestamp = attributes["event.timestamp"] as? String,
-                          ISO8601DateFormatter().date(from: timestamp) != nil else { throw invalid() }
+                          validTimestamp(timestamp) else { throw invalid() }
                     input += inCount
                     output += outCount
                     responses += 1
@@ -73,6 +73,12 @@ public enum GeminiCLILocalUsage {
         guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
         let amount = number.doubleValue
         return amount.isFinite && amount >= 0 && amount <= 9_007_199_254_740_991 ? amount : nil
+    }
+
+    private static func validTimestamp(_ value: String) -> Bool {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) != nil || ISO8601DateFormatter().date(from: value) != nil
     }
 
     private static func invalid() -> ParseError {

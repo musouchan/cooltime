@@ -7,7 +7,7 @@ final class GeminiCLILocalUsageTests: XCTestCase {
 
     func testPrettyPrintedAppendLogCountsOnlyResponseNumbers() throws {
         let records = """
-        {"body":"API response", "attributes":{"event.name":"gemini_cli.api_response","event.timestamp":"2026-11-07T11:00:00Z","input_token_count":12,"output_token_count":3,"response_text":"private {text}"}}
+        {"body":"API response", "attributes":{"event.name":"gemini_cli.api_response","event.timestamp":"2026-11-07T11:00:00.123Z","input_token_count":12,"output_token_count":3,"response_text":"private {text}"}}
         {
           "body": "Other event", "attributes": {"event.name":"gemini_cli.api_request", "input_token_count":999}
         }
