@@ -977,3 +977,46 @@ final class LabeledSummaryTests: XCTestCase {
         XCTAssertNil(availableSummaryLabeled(snap([UsageWindow(label: "5時間枠", usedPercent: 100)])))
     }
 }
+
+final class RemindersPlanTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    func want(_ key: String, _ mins: Double) -> DesiredReminder { DesiredReminder(key: key, title: "\(key) が使えるようになりました", due: now.addingTimeInterval(mins * 60)) }
+    func have(_ id: String, _ key: String, _ mins: Double?, done: Bool = false) -> ExistingReminder {
+        ExistingReminder(id: id, key: key, due: mins.map { now.addingTimeInterval($0 * 60) }, completed: done)
+    }
+
+    func testCreatesWhenMissing() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [], now: now), [.create(want("a", 59))])
+    }
+
+    func testKeepsWhenSameAndUpdatesWhenShifted() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59)], now: now), [])
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59.5)], now: now), [])  // 2分未満のずれは、直さない
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 120)], now: now),
+                       [.update(id: "1", due: want("a", 59).due, title: want("a", 59).title)])
+    }
+
+    func testReusesOverdueOpenItemSoItDoesNotPileUp() {
+        // 期限を過ぎて残っている項目は、次の制限で使い回す（増えない）
+        let a = planReminders(desired: [want("a", 300)], existing: [have("1", "a", -60)], now: now)
+        XCTAssertEqual(a, [.update(id: "1", due: want("a", 300).due, title: want("a", 300).title)])
+    }
+
+    func testDeletesFutureItemWhenNoLongerLimitedButKeepsOverdue() {
+        XCTAssertEqual(planReminders(desired: [], existing: [have("1", "a", 30)], now: now), [.delete(id: "1")])
+        XCTAssertEqual(planReminders(desired: [], existing: [have("2", "a", -30)], now: now), [])  // 「使える」の印として残す
+    }
+
+    func testIgnoresCompletedAndRemovesDuplicates() {
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59, done: true)], now: now), [.create(want("a", 59))])
+        XCTAssertEqual(planReminders(desired: [want("a", 59)], existing: [have("1", "a", 59), have("2", "a", 59)], now: now), [.delete(id: "2")])
+    }
+
+    func testDesiredOnlyForLimitedWithKey() {
+        let lim = StatusEntry(title: "Claude", state: .limited(until: now.addingTimeInterval(600)), windows: [], credit: nil, fetchedAt: now, failed: false, key: "k1")
+        let ok = StatusEntry(title: "Codex", state: .available, windows: [], credit: nil, fetchedAt: now, failed: false, key: "k2")
+        let nokey = StatusEntry(title: "X", state: .limited(until: now.addingTimeInterval(600)), windows: [], credit: nil, fetchedAt: now, failed: false)
+        XCTAssertEqual(desiredReminders(from: [lim, ok, nokey]).map(\.key), ["k1"])
+        XCTAssertEqual(desiredReminders(from: [lim]).first?.title, "Claude が使えるようになりました")
+    }
+}

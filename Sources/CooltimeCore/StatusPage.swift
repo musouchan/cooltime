@@ -2,6 +2,8 @@ import Foundation
 
 /// スマホで見るための、1枚のページ（HTML）に載せる1サービス分。
 public struct StatusEntry: Sendable {
+    /// アカウントを見分ける印（リマインダーの更新に使う）。
+    public var key: String
     public var title: String
     public var state: QuotaState
     public var windows: [UsageWindow]
@@ -10,7 +12,8 @@ public struct StatusEntry: Sendable {
     /// 最新の取得に失敗している（数字は古い）。
     public var failed: Bool
 
-    public init(title: String, state: QuotaState, windows: [UsageWindow], credit: CreditBalance?, fetchedAt: Date?, failed: Bool) {
+    public init(title: String, state: QuotaState, windows: [UsageWindow], credit: CreditBalance?, fetchedAt: Date?, failed: Bool, key: String = "") {
+        self.key = key
         self.title = title
         self.state = state
         self.windows = windows

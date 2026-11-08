@@ -90,7 +90,18 @@ struct CharacterSettingsView: View {
                     Text("スマホで見る").font(.title3).fontWeight(.semibold)
                     Toggle("残りと戻る時刻の一覧を、iCloud Drive に書き出す", isOn: $pageEnabled)
                         .onChange(of: pageEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
-                    Toggle("iPhone のウィジェット（Scriptable）用のデータを書き出す", isOn: $widgetEnabled)
+                    Toggle("制限が解ける時刻に、iPhone のリマインダーで知らせる", isOn: $remindersEnabled)
+                    .onChange(of: remindersEnabled) { _, on in
+                        guard on else { return }
+                        Task {
+                            if await RemindersSync.requestAccess() { model.publishStatusPage(force: true) }
+                            else { model.reminderError = "リマインダーへのアクセスが許可されていません。システム設定 → プライバシーとセキュリティ → リマインダー で、Cooltime を許可してください。" }
+                        }
+                    }
+                Text("リマインダーに「Cooltime」リストを作り、制限が解ける時刻の項目を置きます。iPhone が、その時刻に通知を鳴らします（Mac が寝ていても届きます）。ウィジェットは、ホーム画面を長押し → ＋ → リマインダー → 長押しして編集 → リストで「Cooltime」を選びます。期限を過ぎた項目は、「もう使える」の印として残ります。使い終わったら、チェックを付けて消してください。置くのは、サービス名と時刻だけです。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if remindersEnabled, let e = model.reminderError { Label(e, systemImage: "exclamationmark.triangle").font(.callout) }
+                Toggle("iPhone のウィジェット（Scriptable）用のデータを書き出す", isOn: $widgetEnabled)
                         .onChange(of: widgetEnabled) { _, on in if on { model.publishStatusPage(force: true) } }
                     Text("iPhone に、無料の Scriptable アプリを入れて、iCloud をオンにして一度開いてください。そのあと、ホーム画面を長押し → ＋ → Scriptable → ウィジェットを追加 → 長押しして編集 → Script で「Cooltime」を選びます（Cooltime.js は、自動で置かれます）。ウィジェットは、OS が5〜15分おきに読み直すので、Mac のメニューバーより遅れます。上に「○時○分 時点」と出します。")
                         .font(.caption).foregroundStyle(.secondary)
