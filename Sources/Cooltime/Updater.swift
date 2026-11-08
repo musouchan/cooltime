@@ -76,8 +76,24 @@ final class Updater: ObservableObject {
 
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
-        let (tmp, res) = try await URLSession(configuration: cfg).download(from: asset.url)
-        guard (res as? HTTPURLResponse)?.statusCode == 200 else { throw UpdateError.download }
+        // GitHub のダウンロードは、たまに 504 などで一時的に失敗する（少し待つと通る）。3回まで、間をあけて試す。
+        var req = URLRequest(url: asset.url, timeoutInterval: 60)
+        req.setValue("Cooltime", forHTTPHeaderField: "User-Agent")
+        var tmp: URL?
+        var lastCode = 0
+        for attempt in 0..<3 {
+            if attempt > 0 { try await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000) }
+            do {
+                let (file, res) = try await URLSession(configuration: cfg).download(for: req)
+                lastCode = (res as? HTTPURLResponse)?.statusCode ?? 0
+                if lastCode == 200 { tmp = file; break }
+                // 4xx（見つからない・権限なし）は、やり直しても同じ。5xx だけ、やり直す。
+                if (400..<500).contains(lastCode) { break }
+            } catch {
+                lastCode = 0  // 通信の失敗は、やり直す
+            }
+        }
+        guard let tmp else { throw UpdateError.download(lastCode) }
         let zip = work.appendingPathComponent("Cooltime.zip")
         try fm.moveItem(at: tmp, to: zip)
 
@@ -139,8 +155,9 @@ final class Updater: ObservableObject {
 }
 
 enum UpdateError: Error {
-    case check, noAsset, download, digest, unexpected, notWritable, notPublic, rateLimited
+    case check, noAsset, digest, unexpected, notWritable, notPublic, rateLimited
     case http(Int)
+    case download(Int)
     var message: String {
         switch self {
         case .check: return "更新を確認できませんでした（返事を読み取れませんでした）"
@@ -148,7 +165,9 @@ enum UpdateError: Error {
         case .rateLimited: return "短い間に確認しすぎました。しばらくしてから、もう一度押してください"
         case .http(let code): return "更新を確認できませんでした（HTTP \(code)）"
         case .noAsset: return "新しい版のファイルが見つかりません"
-        case .download: return "ダウンロードに失敗しました"
+        case .download(let code):
+            return code == 0 ? "ダウンロードに失敗しました（通信を確認して、もう一度押してください）"
+                : "ダウンロードに失敗しました（HTTP \(code)）。GitHub 側の一時的な不調のことがあります。少し待って、もう一度押してください"
         case .digest: return "ダウンロードしたファイルが一致しません。入れ替えをやめました"
         case .unexpected: return "新しい版のファイルを読み取れませんでした"
         case .notWritable: return "この場所のアプリは入れ替えできません（「アプリケーション」に移してください）"
