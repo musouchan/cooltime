@@ -49,8 +49,11 @@ final class StatusItemController: NSObject {
 
         // モデルの変化（数字・状態）と、設定の変更で、表示を直す
         model.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refresh() }.store(in: &cancellables)
+        // 設定の変更。関係のない設定の書き込み（記録など）では、描き直さない。
+        // キャラクターを変えただけのときは、画像だけを、すぐ差し替える（軽い）。
         NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
-            .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refresh() }.store(in: &cancellables)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.prefsChanged() } }.store(in: &cancellables)
 
         // 動かしてよいかが変わる出来事
         let ws = NSWorkspace.shared.notificationCenter
@@ -65,6 +68,7 @@ final class StatusItemController: NSObject {
                 .sink { [weak self] _ in self?.updateTimer() }.store(in: &cancellables)
         }
 
+        lastPrefs = currentPrefs()
         refresh()
     }
 
@@ -76,6 +80,35 @@ final class StatusItemController: NSObject {
         } else if let button = item.button {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    private struct Prefs: Equatable {
+        var character: String
+        var compact: Bool
+        var background: Bool
+        var motion: MotionSetting
+        var lowPower: Bool
+    }
+    private var lastPrefs: Prefs?
+
+    private func currentPrefs() -> Prefs {
+        Prefs(character: CharacterPrefs.characterID, compact: CharacterPrefs.menuBarCompact,
+              background: CharacterPrefs.menuBarBackground, motion: CharacterPrefs.motion,
+              lowPower: CharacterPrefs.motionInLowPower)
+    }
+
+    private func prefsChanged() {
+        let now = currentPrefs()
+        defer { lastPrefs = now }
+        guard let old = lastPrefs, old != now else { return }
+        var rest = old
+        rest.character = now.character
+        if rest == now {
+            // キャラクターだけが変わった
+            updateImage(force: true)
+        } else {
+            refresh()
         }
     }
 
