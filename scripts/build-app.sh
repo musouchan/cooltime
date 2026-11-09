@@ -14,7 +14,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/Cooltime"
 cp scripts/cooltime-statusline.sh scripts/cooltime-widget.js "$app/Contents/Resources/"
 cp -R "$bin_dir/Cooltime_Cooltime.bundle" "$app/Contents/Resources/"
-test -s "$app/Contents/Resources/Cooltime_Cooltime.bundle/ServiceIcons.png"
+test -n "$(find "$app/Contents/Resources/Cooltime_Cooltime.bundle" -name ServiceIcons.png -type f -size +0c -print -quit)"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
