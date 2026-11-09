@@ -348,7 +348,7 @@ private struct DetailView: View {
 
     private var keyCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("APIキー").font(.headline)
+            Text(item.service.id == "aider-local-usage" ? "ローカルログのパス" : "APIキー").font(.headline)
             HStack {
                 SecureField(Keychain.has(item.id) ? "保存済み（Keychain）" : (item.service.apiKeyHelp ?? "APIキーを貼り付け"), text: $apiKey)
                 Button("保存して取得") {
@@ -357,7 +357,8 @@ private struct DetailView: View {
                 }
                 .disabled(model.refreshing.contains(item.id) || (apiKey.isEmpty && !Keychain.has(item.id)))
             }
-            Text("APIキーは、この Mac の Keychain にだけ保存します。").font(.caption).foregroundStyle(.secondary)
+            Text(item.service.id == "aider-local-usage" ? "指定したパスだけをKeychainに保存し、ログはこのMacで読み取ります。" : "APIキーは、この Mac の Keychain にだけ保存します。")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .card()
     }
