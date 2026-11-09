@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
+                   hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
+                   apiKeyHelp: "Aiderの --analytics-log に指定したJSONLファイルの絶対パス（キーや認証情報は不要）"),
         ServiceDef(id: "ada-resolution-usage", name: "Ada（自動解決分類実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://app.ada.cx/",
                    bundleIDs: [], hint: "公式Data Export APIで、前UTC日に作成された非テスト会話のうち自動解決と分類された件数。契約の請求対象解決数や残枠ではありません。",
