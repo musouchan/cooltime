@@ -47,7 +47,7 @@ struct AddServiceView: View {
                 .font(.callout).foregroundStyle(.secondary)
             TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
-                .onChange(of: search) { value in
+                .onChange(of: search) { _, value in
                     if !value.isEmpty { selectedCategory = nil }
                 }
             HStack(alignment: .top, spacing: 12) {
