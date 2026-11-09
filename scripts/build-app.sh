@@ -2,15 +2,19 @@
 # Cooltime.app を build/ に作る（署名は ad-hoc）。使い方: scripts/build-app.sh [バージョン] [ビルド（コミットID）]
 set -euo pipefail
 cd "$(dirname "$0")/.."
+python3 scripts/verify-service-icons.py
 version="${1:-0.1.0}"
 build="${2:-$version}"
 swift build -c release --arch arm64 --arch x86_64
-bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/Cooltime"
+bin_dir="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+bin="$bin_dir/Cooltime"
 app="build/Cooltime.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin" "$app/Contents/MacOS/Cooltime"
 cp scripts/cooltime-statusline.sh scripts/cooltime-widget.js "$app/Contents/Resources/"
+cp -R "$bin_dir/Cooltime_Cooltime.bundle" "$app/Contents/Resources/"
+test -n "$(find "$app/Contents/Resources/Cooltime_Cooltime.bundle" -name ServiceIcons.png -type f -size +0c -print -quit)"
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

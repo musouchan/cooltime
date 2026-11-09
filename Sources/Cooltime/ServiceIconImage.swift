@@ -1,18 +1,32 @@
 import AppKit
 import CooltimeCore
 
-/// メニューバーに添える、サービスのアイコン。
-/// ロゴ画像は同梱しない。インストール済みのアプリのアイコンを借りるか、サービス名の頭文字で出す。
+/// 同梱されたサービスアイコンを、画面とメニューバーで共有する。
 @MainActor
 enum ServiceIconImage {
     private static var cache: [String: NSImage] = [:]
+    private static let atlas: CGImage? = {
+        guard let url = Bundle.module.url(forResource: "ServiceIcons", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        return image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+    }()
 
     static func image(for service: ServiceDef, points: CGFloat) -> NSImage {
         let key = "\(service.id)|\(Int(points))"
         if let hit = cache[key] { return hit }
-        let image = appIcon(service, points) ?? letterBadge(service, points)
+        let image = bundledIcon(service, points) ?? appIcon(service, points) ?? letterBadge(service, points)
         cache[key] = image
         return image
+    }
+
+    private static func bundledIcon(_ service: ServiceDef, _ points: CGFloat) -> NSImage? {
+        guard let index = ServiceIconCatalog.indices[service.id], let atlas else { return nil }
+        let side = ServiceIconCatalog.cellSize
+        let cell = CGRect(x: CGFloat((index % ServiceIconCatalog.columns) * side),
+                          y: CGFloat((index / ServiceIconCatalog.columns) * side),
+                          width: CGFloat(side), height: CGFloat(side))
+        guard let cropped = atlas.cropping(to: cell) else { return nil }
+        return NSImage(cgImage: cropped, size: NSSize(width: points, height: points))
     }
 
     private static func appIcon(_ service: ServiceDef, _ points: CGFloat) -> NSImage? {
@@ -25,7 +39,7 @@ enum ServiceIconImage {
         return nil
     }
 
-    /// アプリが無いもの（API など）は、灰色の角丸に、名前の頭文字。
+    /// 将来追加される未収録サービスの最終フォールバック。
     private static func letterBadge(_ service: ServiceDef, _ points: CGFloat) -> NSImage {
         let letter = String(service.name.prefix(1)) as NSString
         return NSImage(size: NSSize(width: points, height: points), flipped: false) { rect in
