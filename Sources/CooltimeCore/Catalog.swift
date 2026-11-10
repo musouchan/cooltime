@@ -293,10 +293,17 @@ public enum Catalog {
 
 
 extension ServiceDef {
-    /// ロゴを探す、サイトのアドレスの候補（上から順に試す）。支払いページのホストと、その親のドメインから作る。
+    /// ロゴを探すサイトのホスト。決まった表があればそれ、なければ支払いページのホスト。
+    var iconHost: String? {
+        if let h = IconHosts.byName[name] { return h }
+        guard let host = URL(string: defaultPaymentURL)?.host, !host.isEmpty else { return nil }
+        return host
+    }
+
+    /// ロゴを探す、サイトのアドレスの候補（上から順に試す）。ホストと、その親のドメインから作る。
     /// ロゴ画像そのものは、このリポジトリに含めない。ボタンを押したときだけ、各サービス自身のサイトから取る。
     public var iconCandidates: [URL] {
-        guard let host = URL(string: defaultPaymentURL)?.host, !host.isEmpty else { return [] }
+        guard let host = iconHost else { return [] }
         let labels = host.split(separator: ".")
         var hosts = [host]
         if labels.count > 2 { hosts.append(labels.suffix(2).joined(separator: ".")) }
@@ -304,4 +311,32 @@ extension ServiceDef {
             ["apple-touch-icon.png", "favicon.ico"].compactMap { URL(string: "https://\(h)/\($0)") }
         }
     }
+
+    /// ホームページのアドレス（ロゴの指定を、HTML から探すとき）。
+    public var iconHomepage: URL? { iconHost.flatMap { URL(string: "https://\($0)/") } }
+}
+
+/// HTML の `<link rel="apple-touch-icon" / "icon" href=…>` から、ロゴの候補を、良さそうな順に取り出す。
+/// apple-touch-icon（大きい）→ icon（sizes が大きい順）。
+public func parseIconLinks(html: String, base: URL) -> [URL] {
+    guard let tag = try? NSRegularExpression(pattern: "<link\\b[^>]*>", options: [.caseInsensitive]) else { return [] }
+    func attr(_ name: String, in s: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: name + "\\s*=\\s*([\"'])(.*?)\\1", options: [.caseInsensitive]),
+              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+              let r = Range(m.range(at: 2), in: s) else { return nil }
+        return String(s[r])
+    }
+    var found: [(url: URL, rank: Int)] = []
+    for m in tag.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
+        guard let r = Range(m.range, in: html) else { continue }
+        let s = String(html[r])
+        guard let rel = attr("rel", in: s)?.lowercased(), rel.contains("icon"), !rel.contains("mask-icon"),
+              let href = attr("href", in: s), let url = URL(string: href, relativeTo: base)?.absoluteURL,
+              url.scheme == "https" else { continue }
+        let size = attr("sizes", in: s).flatMap { Int($0.lowercased().split(separator: "x").first ?? "") } ?? 0
+        let rank = (rel.contains("apple-touch-icon") ? 1000 : 0) + size
+        found.append((url, rank))
+    }
+    var seen = Set<URL>()
+    return found.sorted { $0.rank > $1.rank }.map(\.url).filter { seen.insert($0).inserted }
 }

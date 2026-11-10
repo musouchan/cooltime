@@ -26,26 +26,32 @@ enum ServiceIconStore {
         services.filter { !hasAppIcon($0) && cached($0.id) == nil && !$0.iconCandidates.isEmpty }
     }
 
-    /// 1つ取る。取れたら true。
+    /// 1つ取る。取れたら true。まず決まった場所（apple-touch-icon・favicon）を試し、だめなら、ホームページの HTML に書かれたロゴを探す。
     static func fetch(_ s: ServiceDef) async -> Bool {
-        for url in s.iconCandidates {
-            guard let data = await download(url), let png = normalizedPNG(data) else { continue }
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            guard (try? png.write(to: dir.appendingPathComponent("\(s.id).png"), options: .atomic)) != nil else { continue }
-            memory[s.id] = NSImage(data: png)
-            NotificationCenter.default.post(name: changed, object: nil)
-            return true
+        for url in s.iconCandidates { if await save(url, for: s) { return true } }
+        if let home = s.iconHomepage, let data = await download(home, limit: 400_000),
+           let html = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) {
+            for url in parseIconLinks(html: html, base: home).prefix(3) { if await save(url, for: s) { return true } }
         }
         return false
     }
 
-    private static func download(_ url: URL) async -> Data? {
+    private static func save(_ url: URL, for s: ServiceDef) async -> Bool {
+        guard let data = await download(url), let png = normalizedPNG(data) else { return false }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard (try? png.write(to: dir.appendingPathComponent("\(s.id).png"), options: .atomic)) != nil else { return false }
+        memory[s.id] = NSImage(data: png)
+        NotificationCenter.default.post(name: changed, object: nil)
+        return true
+    }
+
+    private static func download(_ url: URL, limit: Int = 2_000_000) async -> Data? {
         var req = URLRequest(url: url, timeoutInterval: 8)
         req.setValue("Cooltime", forHTTPHeaderField: "User-Agent")
         let cfg = URLSessionConfiguration.ephemeral
         cfg.httpShouldSetCookies = false
         guard let (data, res) = try? await URLSession(configuration: cfg).data(for: req),
-              (res as? HTTPURLResponse)?.statusCode == 200, data.count > 100, data.count < 2_000_000 else { return nil }
+              (res as? HTTPURLResponse)?.statusCode == 200, data.count > 100, data.count < limit else { return nil }
         return data
     }
 

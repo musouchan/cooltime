@@ -1443,3 +1443,27 @@ final class IconCandidateTests: XCTestCase {
         XCTAssertTrue(Catalog.all.allSatisfy { !$0.iconCandidates.isEmpty })
     }
 }
+
+final class IconLinkParseTests: XCTestCase {
+    func testPicksAppleTouchFirstThenLargestIcon() {
+        let html = """
+        <html><head>
+        <link rel="icon" href="/small.png" sizes="16x16">
+        <link rel="icon" type="image/png" href="https://cdn.example.com/big.png" sizes="192x192">
+        <link rel="apple-touch-icon" href="/apple.png">
+        <link rel="mask-icon" href="/mask.svg">
+        <link rel="stylesheet" href="/x.css">
+        <link rel='shortcut icon' href='/favicon.ico'>
+        </head></html>
+        """
+        let urls = parseIconLinks(html: html, base: URL(string: "https://example.com/")!).map(\.absoluteString)
+        XCTAssertEqual(urls.first, "https://example.com/apple.png")
+        XCTAssertEqual(urls[1], "https://cdn.example.com/big.png")
+        XCTAssertFalse(urls.contains { $0.contains("mask") || $0.contains("x.css") })
+        XCTAssertTrue(urls.contains("https://example.com/favicon.ico"))
+    }
+
+    func testIgnoresHttpAndMissingHref() {
+        XCTAssertEqual(parseIconLinks(html: "<link rel=\"icon\" href=\"http://insecure.example.com/a.png\"><link rel=\"icon\">", base: URL(string: "https://example.com/")!), [])
+    }
+}
