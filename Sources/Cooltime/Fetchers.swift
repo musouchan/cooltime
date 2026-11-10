@@ -109,6 +109,8 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "brave-passive-quota":
+                return FetchResult(snapshot: try BraveRateHeaders.read(path: key), identity: nil)
             case "ada-resolution-usage":
                 let config = try AdaResolutionUsage.configuration(from: key)
                 let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
