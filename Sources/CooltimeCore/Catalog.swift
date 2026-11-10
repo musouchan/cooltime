@@ -291,3 +291,17 @@ public enum Catalog {
     public static func service(_ id: String) -> ServiceDef? { all.first { $0.id == id } }
 }
 
+
+extension ServiceDef {
+    /// ロゴを探す、サイトのアドレスの候補（上から順に試す）。支払いページのホストと、その親のドメインから作る。
+    /// ロゴ画像そのものは、このリポジトリに含めない。ボタンを押したときだけ、各サービス自身のサイトから取る。
+    public var iconCandidates: [URL] {
+        guard let host = URL(string: defaultPaymentURL)?.host, !host.isEmpty else { return [] }
+        let labels = host.split(separator: ".")
+        var hosts = [host]
+        if labels.count > 2 { hosts.append(labels.suffix(2).joined(separator: ".")) }
+        return hosts.flatMap { h in
+            ["apple-touch-icon.png", "favicon.ico"].compactMap { URL(string: "https://\(h)/\($0)") }
+        }
+    }
+}

@@ -1427,3 +1427,19 @@ final class RemindersPlanTests: XCTestCase {
         XCTAssertEqual(desiredReminders(from: [lim]).first?.title, "Claude が使えるようになりました")
     }
 }
+
+final class IconCandidateTests: XCTestCase {
+    func testCandidatesUseHostAndParentDomain() {
+        let ds = Catalog.service("deepseek")!
+        XCTAssertEqual(ds.iconCandidates.map(\.absoluteString), [
+            "https://platform.deepseek.com/apple-touch-icon.png", "https://platform.deepseek.com/favicon.ico",
+            "https://deepseek.com/apple-touch-icon.png", "https://deepseek.com/favicon.ico"])
+        let claude = Catalog.service("claude")!
+        XCTAssertEqual(claude.iconCandidates.first?.absoluteString, "https://claude.ai/apple-touch-icon.png")
+        XCTAssertEqual(claude.iconCandidates.count, 2)  // 親のドメインと同じなら、重ねない
+    }
+
+    func testEveryServiceHasCandidates() {
+        XCTAssertTrue(Catalog.all.allSatisfy { !$0.iconCandidates.isEmpty })
+    }
+}
