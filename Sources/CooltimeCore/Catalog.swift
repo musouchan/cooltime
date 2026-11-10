@@ -251,6 +251,9 @@ public enum Catalog {
                    defaultPaymentURL: "https://platform.deepseek.com/top_up",
                    bundleIDs: [], hint: "クレジット残高。", apiKeyHelp: "APIキー"),
         // ここから下は、調査表（スプレッドシート）の順。実機で要確認。
+        ServiceDef(id: "heygen-api", name: "HeyGen API", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://platform.heygen.com/",
+                   bundleIDs: [], hint: "APIキーで確認できる請求情報を表示します。", apiKeyHelp: "HeyGen APIキー"),
         ServiceDef(id: "runway", name: "Runway API", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://dev.runwayml.com/",
                    bundleIDs: [], hint: "APIクレジット残高。Web の枠とは別です。", apiKeyHelp: "Runway API キー"),
