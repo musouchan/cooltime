@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "brave-passive-quota", name: "Brave Search API（応答ヘッダーの長期枠）", kind: .subscription, method: .apiKey,
+                   defaultPaymentURL: "https://api-dashboard.search.brave.com/", bundleIDs: [],
+                   hint: "利用者の既存API応答から保存したX-RateLimitヘッダーをローカル読取。長期リクエスト枠の残数と応答時点のResetを表示。新規検索は行わず、短期レートと購入クレジットは混同しません。",
+                   apiKeyHelp: "既存Brave Search API応答のヘッダーを保存したファイルの絶対パス。APIキーを含むリクエストヘッダーは保存しないでください"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
