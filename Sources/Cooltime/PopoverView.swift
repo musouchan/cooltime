@@ -167,7 +167,11 @@ private struct CreditRow: View {
         let credit = item.snapshot?.credit
         let sub: String = {
             guard let credit else { return "未取得" }
-            if let r = credit.resetsAt { return "予算 · \(formatRemaining(until: r, now: model.now))で戻る" }
+            if let r = credit.resetsAt {
+                let time = formatRemaining(until: r, now: model.now)
+                if let note = credit.note { return "\(note) · \(time)で更新" }
+                return "予算 · \(time)で戻る"
+            }
             return credit.note ?? ""
         }()
         RowFrame(item: item, subtitle: sub, glyph: false) {

@@ -800,6 +800,25 @@ final class MoreAPIParserTests: XCTestCase {
         XCTAssertEqual(DeepL.endpoint(forKey: "abc"), "https://api.deepl.com/v2/usage")
     }
 
+    func testMeshyUsesSpendableBalanceAndShowsPoolBreakdown() throws {
+        let response = #"{"balance":250,"monthly_credits":600,"permanent_credits":400,"monthly_resets_at":1793491200000}"#
+        let credit = try XCTUnwrap(Meshy.parse(d(response), fetchedAt: at).credit)
+        XCTAssertEqual(credit.amount, 250)
+        XCTAssertEqual(credit.note, "アカウント・チームの内訳: 月間枠 600 / 無期限枠 400")
+        XCTAssertEqual(credit.resetsAt, Date(timeIntervalSince1970: 1_793_491_200))
+    }
+
+    func testMeshyOmitsInvalidOptionalFieldsAndPreservesZeroBalance() throws {
+        let response = #"{"balance":0,"monthly_credits":-1,"permanent_credits":true,"monthly_resets_at":null}"#
+        let credit = try XCTUnwrap(Meshy.parse(d(response), fetchedAt: at).credit)
+        XCTAssertEqual(credit.amount, 0)
+        XCTAssertNil(credit.note)
+        XCTAssertNil(credit.resetsAt)
+        XCTAssertThrowsError(try Meshy.parse(d(#"{"balance":true}"#), fetchedAt: at))
+        XCTAssertThrowsError(try Meshy.parse(d(#"{"balance":-1}"#), fetchedAt: at))
+        XCTAssertThrowsError(try Meshy.parse(d(#"{"balance":"NaN"}"#), fetchedAt: at))
+    }
+
     func testDateOnlyIsParsed() {
         XCTAssertNotNil(parseDate("2026-12-01"))
         XCTAssertEqual(formatMoney(CreditBalance(amount: 8.4, currency: "credits")), "8.4")

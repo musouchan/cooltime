@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 public enum ParseError: Error, LocalizedError, Equatable {
@@ -311,12 +312,39 @@ public enum Photoroom {
 }
 
 public enum Meshy {
-    /// GET https://api.meshy.ai/openapi/v1/balance → {"balance": 1234}。月のリセット時刻の項目があれば、それも使う。
+    /// GET https://api.meshy.ai/openapi/v1/balance
     public static func parse(_ data: Data, fetchedAt: Date) throws -> Snapshot {
         let r = try json(data)
-        guard let b = number(r["balance"]) else { throw ParseError.invalid("balance がありません") }
-        let reset = ["monthly_resets_at", "monthlyResetsAt", "reset_at"].lazy.compactMap { parseDate(r[$0]) }.first
-        return Snapshot(credit: CreditBalance(amount: b, currency: "credits", resetsAt: reset), fetchedAt: fetchedAt)
+        guard let balance = numericValue(r["balance"]), balance >= 0 else {
+            throw ParseError.invalid("balance がありません、または不正です")
+        }
+
+        let breakdown = [("monthly_credits", "月間枠"), ("permanent_credits", "無期限枠")].compactMap { key, label -> String? in
+            guard let value = numericValue(r[key]), let credits = Int(exactly: value), credits >= 0 else { return nil }
+            return "\(label) \(credits)"
+        }
+        let note = breakdown.isEmpty ? nil : "アカウント・チームの内訳: " + breakdown.joined(separator: " / ")
+        let reset = monthlyReset(r)
+        return Snapshot(credit: CreditBalance(amount: balance, currency: "credits", resetsAt: reset, note: note),
+                        fetchedAt: fetchedAt)
+    }
+
+    private static func numericValue(_ value: Any?) -> Double? {
+        if let value = value as? NSNumber, CFGetTypeID(value) == CFBooleanGetTypeID() { return nil }
+        guard let result = number(value), result.isFinite else { return nil }
+        return result
+    }
+
+    private static func monthlyReset(_ response: [String: Any]) -> Date? {
+        if let value = response["monthly_resets_at"] {
+            if let milliseconds = numericValue(value), milliseconds >= 0 {
+                return Date(timeIntervalSince1970: milliseconds / 1_000)
+            }
+            // Keep accepting date strings from older responses.
+            if let string = value as? String, Double(string) == nil { return parseDate(string) }
+            return nil
+        }
+        return ["monthlyResetsAt", "reset_at"].lazy.compactMap { parseDate(response[$0]) }.first
     }
 }
 
