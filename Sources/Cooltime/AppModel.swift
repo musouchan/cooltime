@@ -334,6 +334,9 @@ final class AppModel: ObservableObject {
             || fm.fileExists(atPath: home.appendingPathComponent(".claude").path) { found.append("claude") }
         if fm.fileExists(atPath: home.appendingPathComponent(".codex/auth.json").path) { found.append("codex") }
 
+        // そのほかのサービスも、アプリや、ツールのファイルがこの Mac にあれば、見つけて追加する（中身は読まない）。
+        for s in Catalog.all where s.id != "claude" && s.id != "codex" && ServiceDetector.isInstalled(s) { found.append(s.id) }
+
         for id in found where !dismissed.contains(id) && !accounts.contains(where: { $0.serviceID == id }) {
             add(serviceID: id)
         }

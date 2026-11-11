@@ -18,13 +18,17 @@ enum ServiceIconImage {
     static func reset() { cache.removeAll() }
 
     private static func savedLogo(_ service: ServiceDef, _ points: CGFloat) -> NSImage? {
-        guard let icon = ServiceIconStore.cached(service.id)?.copy() as? NSImage else { return nil }
-        icon.size = NSSize(width: points, height: points)
-        return icon
+        guard let logo = ServiceIconStore.cached(service.id) else { return nil }
+        let radius = ServiceIconStore.cornerRadius(for: points)
+        return NSImage(size: NSSize(width: points, height: points), flipped: false) { rect in
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).addClip()
+            logo.draw(in: rect)
+            return true
+        }
     }
 
     private static func appIcon(_ service: ServiceDef, _ points: CGFloat) -> NSImage? {
-        for id in service.bundleIDs {
+        for id in service.appBundleIDs {
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id),
                   let icon = NSWorkspace.shared.icon(forFile: url.path).copy() as? NSImage else { continue }
             icon.size = NSSize(width: points, height: points)
@@ -38,7 +42,7 @@ enum ServiceIconImage {
         let letter = String(service.name.prefix(1)) as NSString
         return NSImage(size: NSSize(width: points, height: points), flipped: false) { rect in
             ServiceIconStore.badgeColor(service.id).setFill()
-            NSBezierPath(roundedRect: rect, xRadius: points * 0.25, yRadius: points * 0.25).fill()
+            NSBezierPath(roundedRect: rect, xRadius: ServiceIconStore.cornerRadius(for: points), yRadius: ServiceIconStore.cornerRadius(for: points)).fill()
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: points * 0.62, weight: .semibold),
                 .foregroundColor: NSColor.white,

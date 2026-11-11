@@ -9,7 +9,7 @@ struct AppIconView: View {
     @State private var tick = 0
 
     private var icons: [NSImage] {
-        service.bundleIDs.compactMap { id in
+        service.appBundleIDs.compactMap { id in
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: id)
                 .map { NSWorkspace.shared.icon(forFile: $0.path) }
         }
@@ -21,13 +21,15 @@ struct AppIconView: View {
         Group {
             if let saved {
                 Image(nsImage: saved).resizable().frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: ServiceIconStore.cornerRadius(for: size), style: .continuous))
             } else if found.isEmpty {
                 // アプリもロゴも無いもの（API など）は、色つきの頭文字で出す。
                 Text(String(service.name.prefix(1)))
                     .font(.system(size: size * 0.5, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: size, height: size)
-                    .background(RoundedRectangle(cornerRadius: size * 0.25).fill(Color(nsColor: ServiceIconStore.badgeColor(service.id))))
+                    .background(RoundedRectangle(cornerRadius: ServiceIconStore.cornerRadius(for: size), style: .continuous)
+                        .fill(Color(nsColor: ServiceIconStore.badgeColor(service.id))))
             } else {
                 // 1つの枠を共有する複数のアプリは、アイコンを重ねる。
                 HStack(spacing: -size * 0.45) {

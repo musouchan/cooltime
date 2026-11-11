@@ -18,7 +18,38 @@ enum ServiceIconStore {
 
     /// インストール済みのアプリのアイコンがあるか。
     static func hasAppIcon(_ s: ServiceDef) -> Bool {
-        s.bundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+        s.appBundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+    }
+
+    /// ロゴの角の丸み。表示の大きさの 1/3（24pt のとき 8pt）。
+    static func cornerRadius(for size: CGFloat) -> CGFloat { size / 3 }
+
+    private static var prefetching = false
+    private static let failedKey = "serviceIconFetchFailedAt"
+
+    /// ロゴの無いサービスのロゴを、まとめて取る（6件ずつ並べて）。取れなかったものは、7日あけて、またやってみる。
+    static func prefetch(_ services: [ServiceDef]) async {
+        guard !prefetching else { return }
+        var failed = UserDefaults.standard.dictionary(forKey: failedKey) as? [String: Double] ?? [:]
+        let now = Date().timeIntervalSince1970
+        let targets = missing(services).filter { now - (failed[$0.id] ?? 0) > 7 * 86400 }
+        guard !targets.isEmpty else { return }
+        prefetching = true
+        defer { prefetching = false }
+        var next = 0
+        await withTaskGroup(of: (String, Bool).self) { group in
+            func start() {
+                guard next < targets.count else { return }
+                let s = targets[next]; next += 1
+                group.addTask { @MainActor in (s.id, await fetch(s)) }
+            }
+            for _ in 0..<6 { start() }
+            while let (id, ok) = await group.next() {
+                if ok { failed[id] = nil } else { failed[id] = now }
+                start()
+            }
+        }
+        UserDefaults.standard.set(failed, forKey: failedKey)
     }
 
     /// まだロゴが無いもの（アプリも、保存したロゴも無い）。
@@ -55,7 +86,7 @@ enum ServiceIconStore {
         return data
     }
 
-    /// 128px の角丸の PNG にそろえる。画像として読めないもの（HTML など）や、小さすぎるものは捨てる。
+    /// 128px の正方形の PNG にそろえる。画像として読めないもの（HTML など）や、小さすぎるものは捨てる。
     private static func normalizedPNG(_ data: Data) -> Data? {
         guard let src = NSImage(data: data), src.size.width >= 16, src.size.height >= 16 else { return nil }
         let px = 128
@@ -66,10 +97,9 @@ enum ServiceIconStore {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = gc
         let rect = NSRect(x: 0, y: 0, width: px, height: px)
+        // 白い地に、余白をあけて置く（透明なロゴも見えるように）。角の丸みは、表示のときに付ける。
         NSColor.white.setFill()
-        let clip = NSBezierPath(roundedRect: rect, xRadius: CGFloat(px) * 0.22, yRadius: CGFloat(px) * 0.22)
-        clip.fill()
-        clip.addClip()
+        rect.fill()
         src.draw(in: rect.insetBy(dx: 8, dy: 8), from: .zero, operation: .sourceOver, fraction: 1)
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])
