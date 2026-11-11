@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "pinecone-local-usage", name: "Pinecone（保存済み応答の利用単位）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://app.pinecone.io/", bundleIDs: [],
+                   hint: "既存のPinecone API応答からusage.read_units/write_unitsだけを保存したJSONLを集計。保存した操作分の実績であり、組織全体の利用量・残高・月次枠ではありません。",
+                   apiKeyHelp: "既存API応答のusageオブジェクトのみを1行1件で保存したJSONLファイルの絶対パス。ベクトルや認証情報は保存しないでください"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
