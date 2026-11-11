@@ -14,7 +14,7 @@ struct AddServiceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("サービスの追加").font(.title3).fontWeight(.semibold)
-            Text("使っているものだけ選んでください。追加するまで、通信はしません。")
+            Text("使っているものだけ選んでください。追加するまで、サービスの情報の取得はしません（「ロゴを取得」を押したときだけ、各サービスの公式サイトに接続します）。")
                 .font(.callout).foregroundStyle(.secondary)
             TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
