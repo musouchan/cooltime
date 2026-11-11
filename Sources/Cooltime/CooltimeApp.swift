@@ -21,6 +21,8 @@ final class WindowsController {
 
     init(model: AppModel, updater: Updater, actions: AppActions) {
         self.model = model
+        // ロゴを、先に取っておく（サービスの追加を開いたときに、もう表示されているように）
+        Task { try? await Task.sleep(nanoseconds: 3_000_000_000); await ServiceIconStore.prefetch(Catalog.all) }
         self.updater = updater
         self.actions = actions
     }

@@ -7,14 +7,12 @@ struct AddServiceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var picked: Set<String> = []
     @State private var search = ""
-    @State private var logoStatus: String?
-    @State private var fetching = false
     let onAdded: (UUID) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("サービスの追加").font(.title3).fontWeight(.semibold)
-            Text("使っているものだけ選んでください。追加するまで、サービスの情報の取得はしません（「ロゴを取得」を押したときだけ、各サービスの公式サイトに接続します）。")
+            Text("使っているものだけ選んでください。追加するまで、サービスの情報の取得はしません（ロゴだけ、各サービスの公式サイトから取得して、この Mac に保存します）。")
                 .font(.callout).foregroundStyle(.secondary)
             TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
@@ -31,13 +29,6 @@ struct AddServiceView: View {
                 }
             }
             .frame(minHeight: 280)
-            HStack(spacing: 8) {
-                Button(fetching ? "取得中…" : "ロゴを取得") { fetchLogos() }
-                    .disabled(fetching || ServiceIconStore.missing(Catalog.all).isEmpty)
-                    .help("アプリが入っていないサービスのロゴを、各サービス自身の公式サイトから取得して、この Mac に保存します（押したときだけ接続します）")
-                if let logoStatus { Text(logoStatus).font(.caption).foregroundStyle(.secondary) }
-                Spacer()
-            }
             HStack {
                 Spacer()
                 Button("キャンセル") { dismiss() }
@@ -51,20 +42,7 @@ struct AddServiceView: View {
             }
         }
         .padding(20).frame(width: 460)
-    }
-
-    /// ロゴの無いサービスを、1つずつ取る。取れなかったものは、色つきの頭文字のまま。
-    private func fetchLogos() {
-        let targets = ServiceIconStore.missing(Catalog.all)
-        fetching = true
-        Task {
-            var ok = 0
-            for (i, s) in targets.enumerated() {
-                logoStatus = "\(i + 1) / \(targets.count)"
-                if await ServiceIconStore.fetch(s) { ok += 1 }
-            }
-            logoStatus = "\(ok) 件取得しました" + (ok < targets.count ? "（\(targets.count - ok) 件は、サイトに見つからなかったため、頭文字のままです）" : "")
-            fetching = false
-        }
+        // ロゴが無いものは、開いたときに取り始める（取れたものから、順に、頭文字がロゴに変わる）
+        .task { await ServiceIconStore.prefetch(Catalog.all) }
     }
 }

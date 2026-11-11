@@ -1467,3 +1467,21 @@ final class IconLinkParseTests: XCTestCase {
         XCTAssertEqual(parseIconLinks(html: "<link rel=\"icon\" href=\"http://insecure.example.com/a.png\"><link rel=\"icon\">", base: URL(string: "https://example.com/")!), [])
     }
 }
+
+final class DetectionTests: XCTestCase {
+    func testLooksUpByIDOrNameAndKeepsOwnBundleIDs() {
+        XCTAssertEqual(Catalog.service("claude")?.appBundleIDs, ["com.anthropic.claudefordesktop"])
+        let cursor = Catalog.all.first { $0.name == "Cursor 個人" }
+        XCTAssertEqual(cursor?.appBundleIDs, ["com.todesktop.230313mzl4w4u92"])
+        XCTAssertEqual(cursor?.detectHomePaths, [".cursor"])
+        XCTAssertEqual(Catalog.service("gemini-cli-local-usage")?.detectHomePaths, [".gemini"])
+        XCTAssertFalse(Catalog.service("jetbrains-ai-local-quota")!.appBundleIDs.isEmpty)
+    }
+
+    func testEveryDetectionKeyMatchesACatalogEntry() {
+        let keys = Set(Catalog.all.flatMap { [$0.id, $0.name] })
+        for k in Detection.bundleIDs.keys { XCTAssertTrue(keys.contains(k), "bundleIDs のキーがカタログに無い: \(k)") }
+        for k in Detection.homePaths.keys { XCTAssertTrue(keys.contains(k), "homePaths のキーがカタログに無い: \(k)") }
+        for k in IconHosts.byName.keys { XCTAssertTrue(Catalog.all.contains { $0.name == k }, "IconHosts のキーがカタログに無い: \(k)") }
+    }
+}
