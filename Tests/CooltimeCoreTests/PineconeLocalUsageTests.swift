@@ -24,6 +24,12 @@ final class PineconeLocalUsageTests: XCTestCase {
         }
     }
 
+    func testDoesNotShowUnobservedWriteUnitsAsZero() throws {
+        let snapshot = try PineconeLocalUsage.parse(Data("{\"usage\":{\"read_units\":2}}".utf8), fetchedAt: now)
+        XCTAssertEqual(snapshot.windows.count, 1)
+        XCTAssertEqual(snapshot.windows[0].reportedAmount, 2)
+    }
+
     func testManualEntryRemainsAvailable() {
         XCTAssertNotNil(Catalog.automatic.first { $0.id == "pinecone-local-usage" })
         XCTAssertNotNil(ManualCatalog.all.first { $0.id == "sheet-117" })
