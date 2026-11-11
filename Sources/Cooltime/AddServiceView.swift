@@ -17,15 +17,22 @@ struct AddServiceView: View {
             TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
             List(Catalog.all.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { s in
-                Toggle(isOn: Binding(get: { picked.contains(s.id) },
-                                     set: { if $0 { picked.insert(s.id) } else { picked.remove(s.id) } })) {
-                    HStack {
+                // チェックボックスは、行の高さの中央に置く（文字が2行でも、上に詰めない）
+                let on = Binding(get: { picked.contains(s.id) },
+                                 set: { if $0 { picked.insert(s.id) } else { picked.remove(s.id) } })
+                HStack(alignment: .center, spacing: 10) {
+                    Toggle("", isOn: on).labelsHidden().toggleStyle(.checkbox)
+                    // アイコンと文字を押しても、切り替わる（チェックボックスの押し直しと、二重にならないよう、別にしてある）
+                    HStack(spacing: 10) {
                         AppIconView(service: s, size: 24)
-                        VStack(alignment: .leading) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(s.name)
                             Text(s.hint).font(.caption).foregroundStyle(.secondary)
                         }
+                        Spacer(minLength: 0)
                     }
+                    .contentShape(Rectangle())
+                    .onTapGesture { on.wrappedValue.toggle() }
                 }
             }
             .frame(minHeight: 280)

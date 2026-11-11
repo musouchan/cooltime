@@ -21,8 +21,9 @@ enum ServiceIconStore {
         s.appBundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
     }
 
-    /// ロゴの角の丸み。表示の大きさの 1/3（24pt のとき 8pt）。
-    static func cornerRadius(for size: CGFloat) -> CGFloat { size / 3 }
+    /// ロゴの角の丸み。macOS のアプリアイコン（Codex・ChatGPT のアイコンと同じ形）と同じ、大きさの約22.4%。
+    static let cornerRatio: CGFloat = 0.2237
+    static func cornerRadius(for size: CGFloat) -> CGFloat { size * cornerRatio }
 
     private static var prefetching = false
     private static let failedKey = "serviceIconFetchFailedAt"
