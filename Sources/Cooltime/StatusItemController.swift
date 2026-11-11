@@ -55,6 +55,12 @@ final class StatusItemController: NSObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.prefsChanged() } }.store(in: &cancellables)
 
+        // ロゴを取得したら、メニューバーの絵も作り直す
+        NotificationCenter.default.publisher(for: ServiceIconStore.changed)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in MainActor.assumeIsolated { ServiceIconImage.reset(); self?.lastTitle = nil; self?.refresh() } }
+            .store(in: &cancellables)
+
         // 動かしてよいかが変わる出来事
         let ws = NSWorkspace.shared.notificationCenter
         ws.publisher(for: NSWorkspace.screensDidSleepNotification).sink { [weak self] _ in self?.screenAsleep = true; self?.updateTimer() }.store(in: &cancellables)

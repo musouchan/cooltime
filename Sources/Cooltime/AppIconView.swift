@@ -2,10 +2,11 @@ import SwiftUI
 import AppKit
 import CooltimeCore
 
-/// ロゴ画像は同梱しない。インストール済みのアプリのアイコンを借りるか、サービス名の文字で出す。
+/// ロゴ画像は同梱しない。インストール済みのアプリのアイコン → 取得して保存したロゴ → 色つきの頭文字、の順で出す。
 struct AppIconView: View {
     let service: ServiceDef
     var size: CGFloat = 22
+    @State private var tick = 0
 
     private var icons: [NSImage] {
         service.bundleIDs.compactMap { id in
@@ -16,13 +17,17 @@ struct AppIconView: View {
 
     var body: some View {
         let found = icons
+        let saved = found.isEmpty ? ServiceIconStore.cached(service.id) : nil
         Group {
-            if found.isEmpty {
-                // アプリが無いもの（API など）は、名前の頭文字で出す。
+            if let saved {
+                Image(nsImage: saved).resizable().frame(width: size, height: size)
+            } else if found.isEmpty {
+                // アプリもロゴも無いもの（API など）は、色つきの頭文字で出す。
                 Text(String(service.name.prefix(1)))
                     .font(.system(size: size * 0.5, weight: .semibold))
+                    .foregroundStyle(.white)
                     .frame(width: size, height: size)
-                    .background(RoundedRectangle(cornerRadius: size * 0.25).fill(.quaternary))
+                    .background(RoundedRectangle(cornerRadius: size * 0.25).fill(Color(nsColor: ServiceIconStore.badgeColor(service.id))))
             } else {
                 // 1つの枠を共有する複数のアプリは、アイコンを重ねる。
                 HStack(spacing: -size * 0.45) {
@@ -33,6 +38,8 @@ struct AppIconView: View {
             }
         }
         .accessibilityHidden(true)
+        .id(tick)
+        .onReceive(NotificationCenter.default.publisher(for: ServiceIconStore.changed)) { _ in tick += 1 }
     }
 }
 
