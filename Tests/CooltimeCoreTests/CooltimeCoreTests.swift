@@ -1440,7 +1440,7 @@ final class IconCandidateTests: XCTestCase {
     }
 
     func testEveryServiceHasCandidates() {
-        XCTAssertTrue(Catalog.all.allSatisfy { !$0.iconCandidates.isEmpty })
+        XCTAssertTrue(Catalog.available.allSatisfy { !$0.iconCandidates.isEmpty })
     }
 }
 
@@ -1471,9 +1471,7 @@ final class IconLinkParseTests: XCTestCase {
 final class DetectionTests: XCTestCase {
     func testLooksUpByIDOrNameAndKeepsOwnBundleIDs() {
         XCTAssertEqual(Catalog.service("claude")?.appBundleIDs, ["com.anthropic.claudefordesktop"])
-        let cursor = Catalog.all.first { $0.name == "Cursor 個人" }
-        XCTAssertEqual(cursor?.appBundleIDs, ["com.todesktop.230313mzl4w4u92"])
-        XCTAssertEqual(cursor?.detectHomePaths, [".cursor"])
+        XCTAssertEqual(Catalog.service("opencode-go-usage")?.detectHomePaths, [".local/share/opencode", ".config/opencode"])
         XCTAssertEqual(Catalog.service("gemini-cli-local-usage")?.detectHomePaths, [".gemini"])
         XCTAssertFalse(Catalog.service("jetbrains-ai-local-quota")!.appBundleIDs.isEmpty)
     }
@@ -1483,5 +1481,18 @@ final class DetectionTests: XCTestCase {
         for k in Detection.bundleIDs.keys { XCTAssertTrue(keys.contains(k), "bundleIDs のキーがカタログに無い: \(k)") }
         for k in Detection.homePaths.keys { XCTAssertTrue(keys.contains(k), "homePaths のキーがカタログに無い: \(k)") }
         for k in IconHosts.byName.keys { XCTAssertTrue(Catalog.all.contains { $0.name == k }, "IconHosts のキーがカタログに無い: \(k)") }
+    }
+}
+
+final class AvailableCatalogTests: XCTestCase {
+    func testManualOnlyServicesAreNotOffered() {
+        XCTAssertFalse(Catalog.available.isEmpty)
+        XCTAssertTrue(Catalog.available.allSatisfy { $0.method != .manual })
+        // 昔のデータを引くためだけに、手入力のサービスは、IDから引ける
+        XCTAssertEqual(Catalog.service("sheet-13")?.method, .manual)
+        XCTAssertNil(Catalog.available.first { $0.id == "sheet-13" })
+        // 自動で取れるものは、残っている
+        XCTAssertNotNil(Catalog.available.first { $0.id == "claude" })
+        XCTAssertNotNil(Catalog.available.first { $0.id == "gemini-cli-local-usage" })
     }
 }

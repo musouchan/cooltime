@@ -14,9 +14,9 @@ struct AddServiceView: View {
             Text("サービスの追加").font(.title3).fontWeight(.semibold)
             Text("使っているものだけ選んでください。追加するまで、サービスの情報の取得はしません（ロゴだけ、各サービスの公式サイトから取得して、この Mac に保存します）。")
                 .font(.callout).foregroundStyle(.secondary)
-            TextField("サービス名を検索（\(Catalog.all.count)件）", text: $search)
+            TextField("サービス名を検索（\(Catalog.available.count)件）", text: $search)
                 .textFieldStyle(.roundedBorder)
-            List(Catalog.all.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { s in
+            List(Catalog.available.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { s in
                 Toggle(isOn: Binding(get: { picked.contains(s.id) },
                                      set: { if $0 { picked.insert(s.id) } else { picked.remove(s.id) } })) {
                     HStack {
@@ -34,7 +34,7 @@ struct AddServiceView: View {
                 Button("キャンセル") { dismiss() }
                 Button("追加") {
                     var last: UUID?
-                    for s in Catalog.all where picked.contains(s.id) { last = model.add(serviceID: s.id).id }
+                    for s in Catalog.available where picked.contains(s.id) { last = model.add(serviceID: s.id).id }
                     if let last { onAdded(last) }
                     dismiss()
                 }
@@ -43,6 +43,6 @@ struct AddServiceView: View {
         }
         .padding(20).frame(width: 460)
         // ロゴが無いものは、開いたときに取り始める（取れたものから、順に、頭文字がロゴに変わる）
-        .task { await ServiceIconStore.prefetch(Catalog.all) }
+        .task { await ServiceIconStore.prefetch(Catalog.available) }
     }
 }

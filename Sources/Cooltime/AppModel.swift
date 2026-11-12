@@ -335,7 +335,7 @@ final class AppModel: ObservableObject {
         if fm.fileExists(atPath: home.appendingPathComponent(".codex/auth.json").path) { found.append("codex") }
 
         // そのほかのサービスも、アプリや、ツールのファイルがこの Mac にあれば、見つけて追加する（中身は読まない）。
-        for s in Catalog.all where s.id != "claude" && s.id != "codex" && ServiceDetector.isInstalled(s) { found.append(s.id) }
+        for s in Catalog.available where s.id != "claude" && s.id != "codex" && ServiceDetector.isInstalled(s) { found.append(s.id) }
 
         for id in found where !dismissed.contains(id) && !accounts.contains(where: { $0.serviceID == id }) {
             add(serviceID: id)
@@ -428,6 +428,14 @@ final class AppModel: ObservableObject {
         })
         for (id, history) in manualObservations {
             if let latest = history.first { snapshots[id] = latest.snapshot }
+        }
+        // 手入力が前提のサービスは、数字が自動で更新されないため、もう扱わない。登録済みのものも、外す。
+        let manualIDs = Set(accounts.filter { Catalog.service($0.serviceID)?.method == .manual }.map(\.id))
+        if !manualIDs.isEmpty {
+            accounts.removeAll { manualIDs.contains($0.id) }
+            for id in manualIDs { snapshots[id] = nil; manualObservations[id] = nil; errors[id] = nil }
+            if let sel = selected, manualIDs.contains(sel) { selected = nil }
+            save()
         }
     }
 
