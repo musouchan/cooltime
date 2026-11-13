@@ -139,6 +139,9 @@ enum Fetchers {
                 return FetchResult(snapshot: snapshot, identity: nil)
             case "aider-local-usage":
                 return FetchResult(snapshot: try AiderAnalyticsUsage.read(path: key), identity: nil)
+            case "continue-local-usage":
+                guard key == "default" else { throw ParseError.unsupported("Continue設定にはdefaultを入力してください") }
+                return FetchResult(snapshot: try ContinueLocalUsage.read(), identity: nil)
             case "figma-ai-usage":
                 let config = try FigmaAIUsage.configuration(from: key)
                 let period = DailyUsagePeriod.previousSevenDays(now: now, lagHours: 6)

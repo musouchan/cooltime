@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "continue-local-usage", name: "Continue CLI（ローカル利用実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://continue.dev/", bundleIDs: [],
+                   hint: "Continue CLI公式の保存済みセッションから入力・出力トークンと推定費用を集計。残高・月間枠・回復時刻は表示しません。",
+                   apiKeyHelp: "Continue CLIがこのMacの~/.continue/sessionsに保存したセッションを読み取ります。defaultを入力。認証情報は不要です"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
