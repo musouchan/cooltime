@@ -752,7 +752,11 @@ final class MoreAPIParserTests: XCTestCase {
         XCTAssertEqual(luma?.amount, 12.34)  // セント → ドル
         XCTAssertEqual(luma?.currency, "USD")
         XCTAssertEqual(try RunwayAPI.parse(d(#"{"creditBalance": 1000, "tier": {}}"#), fetchedAt: at).credit?.amount, 1000)
+        XCTAssertEqual(try Photoroom.parse(d(#"{"images": {"available": 83, "subscription": 100}, "plan": "basic"}"#), fetchedAt: at).credit?.amount, 83)
+        // v1 schema remains accepted for existing account responses.
         XCTAssertEqual(try Photoroom.parse(d(#"{"credits": {"available": 9, "subscription": 10}}"#), fetchedAt: at).credit?.amount, 9)
+        XCTAssertThrowsError(try Photoroom.parse(d(#"{"images": {}}"#), fetchedAt: at))
+        XCTAssertThrowsError(try Photoroom.parse(d("not json"), fetchedAt: at))
         let meshy = try Meshy.parse(d(#"{"balance": 250, "monthly_resets_at": "2026-12-01T00:00:00Z"}"#), fetchedAt: at).credit
         XCTAssertEqual(meshy?.amount, 250)
         XCTAssertNotNil(meshy?.resetsAt)
