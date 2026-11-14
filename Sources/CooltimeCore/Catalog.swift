@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "reimaginehome-mask-usage", name: "REimagineHome（Create Mask消費実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://docs.reimaginehome.ai/", bundleIDs: [],
+                   hint: "公式Create Mask APIの保存済みJSON応答に記されたジョブ別消費クレジットを集計。指定ログに含まれる分だけの実績で、アカウント残量や全API利用量ではありません。",
+                   apiKeyHelp: "Create Mask API応答を1行1件で保存したJSONLファイルの絶対パス（APIキーは不要）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",

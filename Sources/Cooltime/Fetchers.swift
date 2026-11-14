@@ -109,6 +109,8 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "reimaginehome-mask-usage":
+                return FetchResult(snapshot: try REimagineHomeMaskUsage.read(path: key), identity: nil)
             case "ada-resolution-usage":
                 let config = try AdaResolutionUsage.configuration(from: key)
                 let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
