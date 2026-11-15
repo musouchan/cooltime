@@ -109,6 +109,11 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "harvey-usage-events":
+                let config = try HarveyUsageEvents.configuration(from: key)
+                data = try await get(HarveyUsageEvents.url(region: config.region, now: now),
+                                     headers: bearer(config.token), allowRedirects: false)
+                return FetchResult(snapshot: try HarveyUsageEvents.parse(data, fetchedAt: now), identity: nil)
             case "ada-resolution-usage":
                 let config = try AdaResolutionUsage.configuration(from: key)
                 let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
