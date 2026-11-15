@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "harvey-usage-events", name: "Harvey（組織利用イベント）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://developers.harvey.ai/guides/usage_history", bundleIDs: [],
+                   hint: "公式Usage History v2の前UTC日の組織利用イベントを機能別に件数集計。請求額・残高・回復時刻ではありません。管理者向け権限が必要です。",
+                   apiKeyHelp: "リージョン US/EU/AU|Access Sensitive Usage History via API権限のBearer token（Keychain保存）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
