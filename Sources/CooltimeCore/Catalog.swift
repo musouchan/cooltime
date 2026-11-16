@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "fabric-copilot-operation-usage", name: "Fabric Copilot（容量操作実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://learn.microsoft.com/fabric/real-time-hub/explore-fabric-capacity-operation-events", bundleIDs: [],
+                   hint: "公式Fabric容量操作イベントの記録済みCopilot in Fabric全ワークロードCU消費を集計。Power BI単独の実績・残量・回復時刻ではありません。",
+                   apiKeyHelp: "管理者が許可したFabric容量操作イベントを1行1件で保存したJSONLの絶対パス（認証情報不要）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
