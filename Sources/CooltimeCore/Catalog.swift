@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "flair-enterprise-predictions", name: "Flair Enterprise（予測ジョブ実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://enterprise-api-docs.flair.ai/", bundleIDs: [],
+                   hint: "公式Custom Model APIの認証済みユーザーの予測ジョブ一覧を全ページ取得。画像クレジット消費量、残高、月間枠ではありません。",
+                   apiKeyHelp: "Flair Enterprise/Scale Custom Model API key（Keychain保存）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
