@@ -109,6 +109,11 @@ enum Fetchers {
             guard let key = Keychain.get(account.id), !key.isEmpty else { throw FetchError.noKey }
             let data: Data
             switch service.id {
+            case "flair-enterprise-predictions":
+                let snapshot = try await FlairPredictionsUsage.fetch(fetchedAt: now) { url in
+                    try await get(url, headers: ["api-key": key], allowRedirects: false)
+                }
+                return FetchResult(snapshot: snapshot, identity: nil)
             case "ada-resolution-usage":
                 let config = try AdaResolutionUsage.configuration(from: key)
                 let snapshot = try await AdaResolutionUsage.fetch(config: config, now: now) { url in
