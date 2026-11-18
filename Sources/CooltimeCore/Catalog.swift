@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "gorgias-ai-agent-csv", name: "Gorgias AI Agent（公式CSV実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://docs.gorgias.com/en-US/review-your-ai-agent-performance-931052", bundleIDs: [],
+                   hint: "AI AgentレポートのAll Agentsタブから出力したkey metrics CSVをローカルで読み直し、自動処理件数だけ表示します。画面の期間・フィルターが適用され、残枠ではありません。",
+                   apiKeyHelp: "GorgiasのAI AgentレポートでAll Agentsを選び、CSV ZIP内のkey metrics CSVを展開した絶対パス（認証情報不要）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
