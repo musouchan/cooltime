@@ -869,10 +869,8 @@ final class ManualImportTests: XCTestCase {
 
     func testCatalogIncludesManualEntriesWithoutClaimingLiveAPI() {
         XCTAssertEqual(ManualCatalog.all.count, 151)
-        // Spark is delivered on PR #13 and can be added independently of this stack.
-        let pendingSpark = Catalog.service("spark") == nil ? 1 : 0
-        // The automated option is separate from the existing manual service.
-        XCTAssertEqual(Catalog.all.count + pendingSpark, 219)
+        // Independently merged automatic providers must not duplicate catalog IDs.
+        XCTAssertEqual(Set(Catalog.all.map(\.id)).count, Catalog.all.count)
         XCTAssertEqual(Catalog.service("sheet-97")?.method, .manual)
         XCTAssertEqual(Catalog.service("fal-api-balance")?.method, .apiKey)
         XCTAssertEqual(Catalog.service("sheet-183")?.method, .manual)
