@@ -82,7 +82,7 @@ public enum ManualImport {
     }
 
     /// Minimal RFC4180 field parser; supports escaped quotes, commas, and multiline quoted cells.
-    private static func fields(_ csv: String) throws -> [[String]] {
+    static func fields(_ csv: String) throws -> [[String]] {
         var rows: [[String]] = []
         var row: [String] = []
         var field = ""
