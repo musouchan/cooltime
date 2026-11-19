@@ -33,6 +33,10 @@ public struct ServiceDef: Identifiable, Sendable {
 public enum Catalog {
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
+        ServiceDef(id: "autodesk-flex-csv", name: "Autodesk Flex（製品別トークン実績）", kind: .credit, method: .apiKey,
+                   defaultPaymentURL: "https://www.autodesk.com/support/account/admin/usage/flex-usage", bundleIDs: [],
+                   hint: "管理者の公式Token Usage CSVから指定チーム・製品のFlexトークン消費だけを集計。Autodesk AI専用枠や残高ではありません。",
+                   apiKeyHelp: "Token Usage CSVの絶対パス|チーム名|製品名（エクスポート時の表記と完全一致。認証情報不要）"),
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
                    defaultPaymentURL: "https://aider.chat/docs/more/analytics.html", bundleIDs: [],
                    hint: "利用者が指定したAider analyticsログの入力・出力トークンと推定費用を集計。ログ全期間の実績であり、残高や回復時刻ではありません。",
