@@ -19,7 +19,9 @@ public enum FabricCopilotOperationUsage {
         guard data.count <= maximumBytes, let text = String(data: data, encoding: .utf8) else { throw invalid() }
         var seen = Set<String>()
         var total = 0.0
+        var powerBIItemsTotal = 0.0
         var count = 0
+        var powerBIItemsCount = 0
         for line in text.split(whereSeparator: \.isNewline) {
             guard let bytes = String(line).data(using: .utf8),
                   let event = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
@@ -33,13 +35,23 @@ public enum FabricCopilotOperationUsage {
             if seen.insert(id).inserted {
                 total += cuMs / 1_000
                 count += 1
+                if let kind = payload["itemKind"] as? String,
+                   kind == "Report" || kind == "SemanticModel" {
+                    powerBIItemsTotal += cuMs / 1_000
+                    powerBIItemsCount += 1
+                }
             }
-            guard total.isFinite, total <= 9_007_199_254_740_991 else { throw invalid() }
+            guard total.isFinite, total <= 9_007_199_254_740_991,
+                  powerBIItemsTotal.isFinite, powerBIItemsTotal <= 9_007_199_254_740_991 else { throw invalid() }
         }
         guard count > 0 else { throw invalid() }
-        return Snapshot(windows: [UsageWindow(label: "Copilot in Fabric・記録済み全ワークロード",
-                                              reportedAmount: total, reportedUnit: "CU秒")],
-                        fetchedAt: fetchedAt)
+        var windows = [UsageWindow(label: "Copilot in Fabric・記録済み全ワークロード",
+                                   reportedAmount: total, reportedUnit: "CU秒")]
+        if powerBIItemsCount > 0 {
+            windows.append(UsageWindow(label: "Copilot・Power BI関連アイテムのみ（部分値）",
+                                       reportedAmount: powerBIItemsTotal, reportedUnit: "CU秒"))
+        }
+        return Snapshot(windows: windows, fetchedAt: fetchedAt)
     }
 
     private static func number(_ value: Any?) -> Double? {
