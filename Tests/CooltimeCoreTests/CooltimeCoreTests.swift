@@ -1497,6 +1497,8 @@ final class ClaudeStatuslineRateLimitsTests: XCTestCase {
         let weekOnly = try ClaudeStatusline.parse(d(#"{"rate_limits":{"seven_day":{"used_percentage":4,"resets_at":1800400000}}}"#), fetchedAt: at)
         XCTAssertEqual(weekOnly.windows.map(\.label), ["週の枠"])
         XCTAssertThrowsError(try ClaudeStatusline.parse(d(#"{"model":{}}"#), fetchedAt: at))  // まだ最初の応答が無いとき
+    }
+}
 
 final class AvailableCatalogTests: XCTestCase {
     func testManualOnlyServicesAreNotOffered() {
