@@ -10,7 +10,7 @@ enum FetchError: LocalizedError {
     case noFile
     case claudeNotFound
     case claudeFailed(String)
-    /// 新しい Claude Code は、`claude -p /usage` で使用量を出さず、費用の表示（/cost と同じ）になった。
+    /// `claude -p /usage` が、使用量ではなく、費用の表示（/cost と同じ）になった。ログイン切れ、または新しい版のため。
     case claudeUsageUnsupported
 
     var errorDescription: String? {
@@ -23,7 +23,7 @@ enum FetchError: LocalizedError {
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
         case .claudeNotFound: return "Claude Code（ターミナル版）が見つかりません"
         case .claudeFailed(let d): return "/usage を取得できませんでした（\(d)）"
-        case .claudeUsageUnsupported: return "この版の Claude Code は、/usage で使用量を出しません。管理画面の「ステータスラインの設定」を行うと、Claude Code を使っている間に更新されます"
+        case .claudeUsageUnsupported: return "Claude Code から使用量を取れません。ログインが切れている可能性があります（ターミナルで claude を開いて /login を実行してください）。管理画面の「ステータスラインの設定」を行うと、Claude Code を使っている間の記録でも更新されます"
         }
     }
 }
@@ -111,7 +111,7 @@ enum Fetchers {
                 }
                 guard let s = try? readClaude(slot: account.slot) else { throw FetchError.claudeUsageUnsupported }
                 return FetchResult(snapshot: s, identity: claudeIdentity(),
-                                   notice: "この版の Claude Code は /usage で使用量を出さないため、ステータスラインの記録を使っています（Claude Code を使っている間に更新されます）。")
+                                   notice: "Claude Code の /usage から使用量を取れないため（ログイン切れの可能性があります。ターミナルで claude を開いて /login）、ステータスラインの記録を使っています。")
             }
             return FetchResult(snapshot: try readClaude(slot: account.slot), identity: claudeIdentity())
         case .codexAppServer:
@@ -670,10 +670,10 @@ enum ClaudeCLI {
     }
 
     private static let unsupportedKey = "claudeUsageUnsupportedAt"
-    /// /usage で使用量を取れない版と分かってから、6時間は、毎回試さない（毎分30秒まで走らせない）。
+    /// /usage で使用量を取れないと分かってから、30分は、毎回試さない（毎分30秒まで走らせない）。ログイン切れでも、費用の表示になるので、短くしてある。
     static var usageUnsupportedRecently: Bool {
         let t = UserDefaults.standard.double(forKey: unsupportedKey)
-        return t > 0 && Date().timeIntervalSince1970 - t < 6 * 3600
+        return t > 0 && Date().timeIntervalSince1970 - t < 30 * 60
     }
     static func markUsageUnsupported() { UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: unsupportedKey) }
 
