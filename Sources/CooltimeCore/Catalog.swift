@@ -31,6 +31,11 @@ public struct ServiceDef: Identifiable, Sendable {
 }
 
 public enum Catalog {
+    /// 画面に出す（追加画面・自動検出・ロゴの取得）サービス。自動で最新の状況を取れるものだけ。
+    /// 手入力が前提のサービス（`ManualCatalog`）は、数字が自動で更新されず、古いまま残るため、出さない。
+    public static var available: [ServiceDef] { automatic }
+
+    /// 手入力のサービスも含む、すべて（IDから引くための、昔のデータ用）。
     public static let all: [ServiceDef] = automatic + ManualCatalog.all
     public static let automatic: [ServiceDef] = [
         ServiceDef(id: "aider-local-usage", name: "Aider（ローカル利用実績）", kind: .credit, method: .apiKey,
