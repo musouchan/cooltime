@@ -32,6 +32,8 @@ final class AppModel: ObservableObject {
     @Published var accounts: [Account] = []
     @Published private var snapshots: [UUID: Snapshot] = [:]
     @Published var errors: [UUID: String] = [:]
+    /// 異常ではない、取り方の知らせ（目立たない色で出す）。
+    @Published var notices: [UUID: String] = [:]
     @Published private(set) var manualObservations: [UUID: [ManualObservation]] = [:]
     @Published var refreshing: Set<UUID> = []
     @Published private(set) var now: Date
@@ -258,6 +260,7 @@ final class AppModel: ObservableObject {
             }
             apply(result.identity, to: account.id)
             errors[account.id] = result.warning
+            notices[account.id] = result.notice
             save()
         } catch {
             errors[account.id] = error.localizedDescription

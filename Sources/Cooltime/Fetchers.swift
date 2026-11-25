@@ -10,6 +10,8 @@ enum FetchError: LocalizedError {
     case noFile
     case claudeNotFound
     case claudeFailed(String)
+    /// 新しい Claude Code は、`claude -p /usage` で使用量を出さず、費用の表示（/cost と同じ）になった。
+    case claudeUsageUnsupported
 
     var errorDescription: String? {
         switch self {
@@ -21,6 +23,7 @@ enum FetchError: LocalizedError {
         case .noFile: return "まだデータがありません（ステータスラインの設定が必要）"
         case .claudeNotFound: return "Claude Code（ターミナル版）が見つかりません"
         case .claudeFailed(let d): return "/usage を取得できませんでした（\(d)）"
+        case .claudeUsageUnsupported: return "この版の Claude Code は、/usage で使用量を出しません。管理画面の「ステータスラインの設定」を行うと、Claude Code を使っている間に更新されます"
         }
     }
 }
@@ -47,6 +50,8 @@ struct FetchResult {
     var identity: AccountIdentity?
     /// 取れたが問題があるとき（例: /usage が失敗して、古い記録を使った）。画面に出す。
     var warning: String?
+    /// 異常ではない、取り方についての知らせ（例: ステータスラインの記録を使っている）。目立たない色で出す。
+    var notice: String?
 }
 
 enum Fetchers {
@@ -87,18 +92,26 @@ enum Fetchers {
                 return FetchResult(snapshot: try JetBrainsQuotaFiles.read(), identity: nil)
             }
             // 既定のアカウントは、公式の Claude Code の /usage で、アカウント全体の使用量を取る。
-            // 取れなければ、ステータスラインの記録に戻る。
+            // 新しい Claude Code は /usage で使用量を出さなくなった。そのときは、公式のステータスライン
+            // （rate_limits）の記録を使う（Claude Code を使っている間に更新される。通信なし）。
             if account.slot == "default" {
-                do {
-                    let text = try await Task.detached { try ClaudeCLI.usage() }.value
-                    return FetchResult(snapshot: try ClaudeUsageText.parse(text, now: now), identity: claudeIdentity())
-                } catch {
-                    // 失敗を隠さない。古い記録があれば表示は続けるが、理由を画面に出す。
-                    if let s = try? readClaude(slot: account.slot) {
-                        return FetchResult(snapshot: s, identity: claudeIdentity(), warning: error.localizedDescription)
+                if !ClaudeCLI.usageUnsupportedRecently {
+                    do {
+                        let text = try await Task.detached { try ClaudeCLI.usage() }.value
+                        return FetchResult(snapshot: try ClaudeUsageText.parse(text, now: now), identity: claudeIdentity())
+                    } catch FetchError.claudeUsageUnsupported {
+                        ClaudeCLI.markUsageUnsupported()
+                    } catch {
+                        // 失敗を隠さない。古い記録があれば表示は続けるが、理由を画面に出す。
+                        if let s = try? readClaude(slot: account.slot) {
+                            return FetchResult(snapshot: s, identity: claudeIdentity(), warning: error.localizedDescription)
+                        }
+                        throw error
                     }
-                    throw error
                 }
+                guard let s = try? readClaude(slot: account.slot) else { throw FetchError.claudeUsageUnsupported }
+                return FetchResult(snapshot: s, identity: claudeIdentity(),
+                                   notice: "この版の Claude Code は /usage で使用量を出さないため、ステータスラインの記録を使っています（Claude Code を使っている間に更新されます）。")
             }
             return FetchResult(snapshot: try readClaude(slot: account.slot), identity: claudeIdentity())
         case .codexAppServer:
@@ -649,8 +662,20 @@ enum ClaudeCLI {
         if first.text.contains("%") { return first.text }
         let second = try run(["-p", "/usage"])
         if second.text.contains("%") { return second.text }
+        // 新しい版は、/cost と同じ「費用」の表示になる（使用量の%が無い）
+        if [first.text, second.text].contains(where: { $0.contains("Total duration") || $0.contains("Estimated cost") }) {
+            throw FetchError.claudeUsageUnsupported
+        }
         throw FetchError.claudeFailed(detail(second, fallback: first))
     }
+
+    private static let unsupportedKey = "claudeUsageUnsupportedAt"
+    /// /usage で使用量を取れない版と分かってから、6時間は、毎回試さない（毎分30秒まで走らせない）。
+    static var usageUnsupportedRecently: Bool {
+        let t = UserDefaults.standard.double(forKey: unsupportedKey)
+        return t > 0 && Date().timeIntervalSince1970 - t < 6 * 3600
+    }
+    static func markUsageUnsupported() { UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: unsupportedKey) }
 
     private static func detail(_ r: (text: String, err: String, status: Int32), fallback f: (text: String, err: String, status: Int32)) -> String {
         let msg = [r.err, r.text, f.err, f.text].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }

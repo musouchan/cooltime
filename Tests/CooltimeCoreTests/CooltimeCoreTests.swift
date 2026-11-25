@@ -1485,3 +1485,19 @@ final class DetectionTests: XCTestCase {
         for k in IconHosts.byName.keys { XCTAssertTrue(Catalog.all.contains { $0.name == k }, "IconHosts のキーがカタログに無い: \(k)") }
     }
 }
+
+final class ClaudeStatuslineRateLimitsTests: XCTestCase {
+    func d(_ s: String) -> Data { s.data(using: .utf8)! }
+
+    /// Claude Code 公式資料のとおりの rate_limits。片方の枠が無くても読める。
+    func testReadsOfficialRateLimitsAndToleratesMissingWindow() throws {
+        let at = Date(timeIntervalSince1970: 1_800_000_000)
+        let both = try ClaudeStatusline.parse(d(#"{"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1800003600},"seven_day":{"used_percentage":41.2,"resets_at":1800400000}}}"#), fetchedAt: at)
+        XCTAssertEqual(both.windows.map(\.label), ["5時間枠", "週の枠"])
+        XCTAssertEqual(both.windows[0].usedPercent ?? 0, 23.5, accuracy: 0.001)
+        // 5時間枠が、戻り時刻を過ぎて、消えているとき
+        let weekOnly = try ClaudeStatusline.parse(d(#"{"rate_limits":{"seven_day":{"used_percentage":4,"resets_at":1800400000}}}"#), fetchedAt: at)
+        XCTAssertEqual(weekOnly.windows.map(\.label), ["週の枠"])
+        XCTAssertThrowsError(try ClaudeStatusline.parse(d(#"{"model":{}}"#), fetchedAt: at))  // まだ最初の応答が無いとき
+    }
+}

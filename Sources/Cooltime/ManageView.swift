@@ -229,6 +229,8 @@ private struct DetailView: View {
             }
             if let err = model.errors[item.id] {
                 Text(err).font(.callout).foregroundStyle(.red)
+            } else if let note = model.notices[item.id] {
+                Text(note).font(.caption).foregroundStyle(.secondary)
             }
             if let snap = item.snapshot {
                 ForEach(Array(snap.windows.enumerated()), id: \.offset) { _, w in
